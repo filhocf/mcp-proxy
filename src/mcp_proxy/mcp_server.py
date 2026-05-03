@@ -25,6 +25,50 @@ from .proxy_server import create_proxy_server
 
 logger = logging.getLogger(__name__)
 
+# Paths that bypass API key authentication
+_PUBLIC_PATHS: Final[frozenset[str]] = frozenset({"/health", "/status"})
+
+
+class APIKeyMiddleware:
+    """Starlette middleware that validates Bearer token authentication.
+
+    Skips validation for health/status endpoints and CORS preflight requests.
+    When no api_key is configured, all requests pass through (backward compatible).
+    """
+
+    def __init__(self, app: Any, *, api_key: str) -> None:
+        self._app = app
+        self._api_key = api_key
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http":
+            await self._app(scope, receive, send)
+            return
+
+        path = scope.get("path", "")
+        method = scope.get("method", "")
+
+        # Skip auth for public paths and CORS preflight
+        if path in _PUBLIC_PATHS or method == "OPTIONS":
+            await self._app(scope, receive, send)
+            return
+
+        # Extract Authorization header
+        headers = dict(scope.get("headers", []))
+        auth_value = headers.get(b"authorization", b"").decode()
+
+        if auth_value == f"Bearer {self._api_key}":
+            await self._app(scope, receive, send)
+            return
+
+        # Reject
+        response = JSONResponse(
+            {"error": "Unauthorized", "message": "Invalid or missing API key"},
+            status_code=401,
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+        await response(scope, receive, send)
+
 DEFAULT_EXPOSE_HEADERS: Final[tuple[str, ...]] = ("mcp-session-id",)
 
 
@@ -42,6 +86,7 @@ class MCPServerSettings:
     allow_origins: list[str] | None = None
     expose_headers: list[str] = field(default_factory=_default_expose_headers)
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = "INFO"
+    api_key: str | None = None
 
 
 # To store last activity for multiple servers if needed, though status endpoint is global for now.
@@ -275,6 +320,12 @@ async def run_mcp_server(
                     expose_headers=mcp_settings.expose_headers,
                 ),
             )
+
+        if mcp_settings.api_key:
+            middleware.append(
+                Middleware(APIKeyMiddleware, api_key=mcp_settings.api_key),
+            )
+            logger.info("API key authentication enabled")
 
         starlette_app = Starlette(
             debug=(mcp_settings.log_level == "DEBUG"),
