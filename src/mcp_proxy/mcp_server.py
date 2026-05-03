@@ -187,32 +187,55 @@ async def run_mcp_server(
             _global_status["server_instances"]["default"] = "configured"
 
         # Setup named servers
+        failed_servers: list[str] = []
         for name, params in named_server_params.items():
-            logger.info(
-                "Setting up named server '%s': %s %s",
-                name,
-                params.command,
-                " ".join(params.args),
-            )
-            stdio_streams_named = await stack.enter_async_context(stdio_client(params))
-            session_named = await stack.enter_async_context(ClientSession(*stdio_streams_named))
-            proxy_named = await create_proxy_server(session_named)
+            try:
+                logger.info(
+                    "Setting up named server '%s': %s %s",
+                    name,
+                    params.command,
+                    " ".join(params.args),
+                )
+                stdio_streams_named = await stack.enter_async_context(stdio_client(params))
+                session_named = await stack.enter_async_context(ClientSession(*stdio_streams_named))
+                proxy_named = await create_proxy_server(session_named)
 
-            instance_routes_named, http_manager_named = create_single_instance_routes(
-                proxy_named,
-                stateless_instance=mcp_settings.stateless,
-            )
-            await stack.enter_async_context(
-                http_manager_named.run(),
-            )  # Manage lifespan by calling run()
+                instance_routes_named, http_manager_named = create_single_instance_routes(
+                    proxy_named,
+                    stateless_instance=mcp_settings.stateless,
+                )
+                await stack.enter_async_context(
+                    http_manager_named.run(),
+                )  # Manage lifespan by calling run()
 
-            # Mount these routes under /servers/<name>/
-            server_mount = Mount(f"/servers/{name}", routes=instance_routes_named)
-            all_routes.append(server_mount)
-            _global_status["server_instances"][name] = "configured"
+                # Mount these routes under /servers/<name>/
+                server_mount = Mount(f"/servers/{name}", routes=instance_routes_named)
+                all_routes.append(server_mount)
+                _global_status["server_instances"][name] = "configured"
+            except Exception:
+                logger.exception(
+                    "Failed to start named server '%s'. Skipping this server.",
+                    name,
+                )
+                _global_status["server_instances"][name] = "failed"
+                failed_servers.append(name)
+
+        if failed_servers:
+            logger.warning(
+                "The following named servers failed to start and were skipped: %s",
+                ", ".join(failed_servers),
+            )
 
         if not default_server_params and not named_server_params:
             logger.error("No servers configured to run.")
+            return
+
+        # Check if all named servers failed and there's no default server
+        has_running_named = len(named_server_params) > len(failed_servers)
+        if not default_server_params and not has_running_named:
+            logger.error(
+                "No servers are running. All named servers failed to start.",
+            )
             return
 
         middleware: list[Middleware] = []
