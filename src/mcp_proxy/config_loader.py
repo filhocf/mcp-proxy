@@ -5,6 +5,7 @@ This module provides functionality to load named server configurations from JSON
 
 import json
 import logging
+import os
 from pathlib import Path
 
 from mcp.client.stdio import StdioServerParameters
@@ -85,7 +86,9 @@ def load_named_server_configs_from_file(
             continue
 
         new_env = base_env.copy()
-        new_env.update(env)
+        new_env.update(
+            {k: os.path.expandvars(os.path.expanduser(v)) for k, v in env.items()}
+        )
 
         named_stdio_params[name] = StdioServerParameters(
             command=command,

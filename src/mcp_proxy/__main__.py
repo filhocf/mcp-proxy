@@ -349,7 +349,9 @@ def _configure_default_server(
         return None
 
     default_server_env = base_env.copy()
-    default_server_env.update(dict(args_parsed.env))  # Specific env vars for default server
+    default_server_env.update(
+        {k: os.path.expandvars(os.path.expanduser(v)) for k, v in args_parsed.env}
+    )
 
     default_stdio_params = StdioServerParameters(
         command=args_parsed.command_or_url,

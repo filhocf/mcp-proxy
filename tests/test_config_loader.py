@@ -247,3 +247,66 @@ def test_config_file_is_empty_string() -> None:
         path = Path(tmp_config_path)
         if path.exists():
             path.unlink()
+
+
+def test_env_var_expansion_in_config(
+    create_temp_config_file: Callable[[dict[str, t.Any]], str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Test that environment variables in config values are expanded."""
+    monkeypatch.setenv("MY_TEST_VAR", "/expanded/path")
+    config_content = {
+        "mcpServers": {
+            "server1": {
+                "command": "echo",
+                "env": {"DATA_DIR": "$MY_TEST_VAR/data", "STATIC": "no_expansion"},
+            },
+        },
+    }
+    tmp_config_path = create_temp_config_file(config_content)
+    loaded_params = load_named_server_configs_from_file(tmp_config_path, {})
+
+    assert loaded_params["server1"].env is not None
+    assert loaded_params["server1"].env["DATA_DIR"] == "/expanded/path/data"
+    assert loaded_params["server1"].env["STATIC"] == "no_expansion"
+
+
+def test_env_var_expansion_with_braces(
+    create_temp_config_file: Callable[[dict[str, t.Any]], str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Test that ${VAR} syntax is expanded in env values."""
+    monkeypatch.setenv("HOME", "/home/testuser")
+    config_content = {
+        "mcpServers": {
+            "server1": {
+                "command": "echo",
+                "env": {"DB_PATH": "${HOME}/.local/share/db.sqlite"},
+            },
+        },
+    }
+    tmp_config_path = create_temp_config_file(config_content)
+    loaded_params = load_named_server_configs_from_file(tmp_config_path, {})
+
+    assert loaded_params["server1"].env is not None
+    assert loaded_params["server1"].env["DB_PATH"] == "/home/testuser/.local/share/db.sqlite"
+
+
+def test_tilde_expansion_in_env(
+    create_temp_config_file: Callable[[dict[str, t.Any]], str],
+) -> None:
+    """Test that ~ is expanded in env values."""
+    config_content = {
+        "mcpServers": {
+            "server1": {
+                "command": "echo",
+                "env": {"CONFIG": "~/my-config"},
+            },
+        },
+    }
+    tmp_config_path = create_temp_config_file(config_content)
+    loaded_params = load_named_server_configs_from_file(tmp_config_path, {})
+
+    assert loaded_params["server1"].env is not None
+    assert loaded_params["server1"].env["CONFIG"].startswith("/")
+    assert "~" not in loaded_params["server1"].env["CONFIG"]
