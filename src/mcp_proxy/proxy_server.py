@@ -3,6 +3,7 @@
 This server is created independent of any transport mechanism.
 """
 
+import json
 import logging
 import typing as t
 
@@ -96,6 +97,20 @@ async def create_proxy_server(remote_app: ClientSession) -> server.Server[object
                     req.params.name,
                     (req.params.arguments or {}),
                 )
+                # When the server returns structuredContent but no meaningful text,
+                # add a JSON text fallback so stdio clients can display the result.
+                content_items = result.content or []
+                has_text = any(
+                    isinstance(item, types.TextContent) and (item.text or "").strip()
+                    for item in content_items
+                )
+                if not has_text and result.structuredContent is not None:
+                    fallback_text = json.dumps(result.structuredContent, indent=2)
+                    new_content = list(content_items)
+                    new_content.append(
+                        types.TextContent(type="text", text=fallback_text),
+                    )
+                    result = result.model_copy(update={"content": new_content})
                 return types.ServerResult(result)
             except Exception as e:  # noqa: BLE001
                 return types.ServerResult(
