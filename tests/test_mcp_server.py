@@ -620,8 +620,14 @@ async def test_run_mcp_server_global_status_updates(
         # Verify global status was updated
         assert "default" in _global_status["server_instances"]
         assert "test_server" in _global_status["server_instances"]
-        assert _global_status["server_instances"]["default"] == "configured"
-        assert _global_status["server_instances"]["test_server"] == "configured"
+        assert _global_status["server_instances"]["default"] == {
+            "status": "running",
+            "command": mock_stdio_params.command,
+        }
+        assert _global_status["server_instances"]["test_server"] == {
+            "status": "running",
+            "command": mock_stdio_params.command,
+        }
 
 
 async def test_run_mcp_server_sse_url_logging(

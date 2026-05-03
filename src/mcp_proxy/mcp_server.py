@@ -70,7 +70,23 @@ HTTP_METHODS = ["DELETE", "GET", "HEAD", "OPTIONS", "PATCH", "POST", "PUT", "TRA
 
 async def _handle_status(_: Request) -> Response:
     """Global health check and service usage monitoring endpoint."""
-    return JSONResponse(_global_status)
+    healthy_count = sum(
+        1
+        for s in _global_status["server_instances"].values()
+        if isinstance(s, dict) and s.get("status") == "running"
+    )
+    total_count = len(_global_status["server_instances"])
+    is_healthy = healthy_count > 0 or total_count == 0
+    status_code = 200 if is_healthy else 503
+    return JSONResponse(
+        {
+            **_global_status,
+            "healthy": is_healthy,
+            "servers_running": healthy_count,
+            "servers_total": total_count,
+        },
+        status_code=status_code,
+    )
 
 
 def create_single_instance_routes(
@@ -156,6 +172,7 @@ async def run_mcp_server(
 
     all_routes: list[BaseRoute] = [
         Route("/status", endpoint=_handle_status),  # Global status endpoint
+        Route("/health", endpoint=_handle_status),  # Health check alias
     ]
     # Use AsyncExitStack to manage lifecycles of multiple components
     async with contextlib.AsyncExitStack() as stack:
@@ -184,7 +201,10 @@ async def run_mcp_server(
             )
             await stack.enter_async_context(http_manager.run())  # Manage lifespan by calling run()
             all_routes.extend(instance_routes)
-            _global_status["server_instances"]["default"] = "configured"
+            _global_status["server_instances"]["default"] = {
+                "status": "running",
+                "command": default_server_params.command,
+            }
 
         # Setup named servers
         for name, params in named_server_params.items():
@@ -209,7 +229,10 @@ async def run_mcp_server(
             # Mount these routes under /servers/<name>/
             server_mount = Mount(f"/servers/{name}", routes=instance_routes_named)
             all_routes.append(server_mount)
-            _global_status["server_instances"][name] = "configured"
+            _global_status["server_instances"][name] = {
+                "status": "running",
+                "command": params.command,
+            }
 
         if not default_server_params and not named_server_params:
             logger.error("No servers configured to run.")
