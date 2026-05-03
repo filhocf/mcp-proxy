@@ -537,3 +537,30 @@ async def test_call_tool_with_error(
 
         call_tool_result = await session.call_tool("tool", {})
         assert call_tool_result.isError
+
+
+@pytest.mark.parametrize("tool_callback", [AsyncMock()])
+async def test_call_tool_structured_content_fallback(
+    session_generator: SessionContextManager,
+    server_can_call_tool: Server[object],
+    tool_callback: AsyncMock,
+) -> None:
+    """Test that structuredContent is forwarded as text fallback when content is empty."""
+    async with session_generator(server_can_call_tool) as session:
+        await session.initialize()
+
+        # Return structured content only (dict), which the SDK wraps into
+        # CallToolResult with structuredContent set and a JSON text in content.
+        tool_callback.return_value = {"key": "value", "count": 42}
+
+        call_tool_result = await session.call_tool("tool", {})
+        assert not call_tool_result.isError
+        # The result should contain text content with the JSON representation
+        assert len(call_tool_result.content) > 0
+        text_items = [
+            c for c in call_tool_result.content if isinstance(c, types.TextContent)
+        ]
+        assert len(text_items) > 0
+        # The text should contain the structured data
+        assert "value" in text_items[0].text
+        assert "42" in text_items[0].text
