@@ -92,7 +92,9 @@ async def create_proxy_server(
 
         app.request_handlers[types.GetPromptRequest] = _get_prompt
 
-    if capabilities.resources:
+    # DISABLED: kiro-cli 0.11.x (rmcp 0.17) fails to parse resource metadata
+    # from downstream servers. Resources not used in our workflow.
+    if False:  # capabilities.resources — disabled: rmcp 0.17 incompatible
         logger.debug("Capabilities: adding Resources...")
 
         async def _list_resources(_: t.Any) -> types.ServerResult:  # noqa: ANN401
@@ -122,7 +124,8 @@ async def create_proxy_server(
 
         app.request_handlers[types.SetLevelRequest] = _set_logging_level
 
-    if capabilities.resources:
+    # DISABLED: same reason as above — resources incompatible with rmcp 0.17
+    if False:  # capabilities.resources — disabled: rmcp 0.17 incompatible
         logger.debug("Capabilities: adding Resources...")
 
         async def _subscribe_resource(req: types.SubscribeRequest) -> types.ServerResult:
