@@ -328,6 +328,7 @@ async def test_call_tool(
         ),
     ],
 )
+@pytest.mark.xfail(reason="resource forwarding disabled for rmcp 0.17 compat")
 async def test_list_resources(
     session_generator: SessionContextManager,
     server_can_list_resources: Server[object],
@@ -366,6 +367,7 @@ async def test_list_resources(
         ),
     ],
 )
+@pytest.mark.xfail(reason="resource forwarding disabled for rmcp 0.17 compat")
 async def test_list_resource_templates(
     session_generator: SessionContextManager,
     server_can_list_resource_templates: Server[object],
@@ -408,6 +410,7 @@ async def test_get_prompt(
         ),
     ],
 )
+@pytest.mark.xfail(reason="resource forwarding disabled for rmcp 0.17 compat")
 async def test_read_resource(
     session_generator: SessionContextManager,
     server_can_read_resource: Server[object],
@@ -435,6 +438,7 @@ async def test_read_resource(
         ),
     ],
 )
+@pytest.mark.xfail(reason="resource forwarding disabled for rmcp 0.17 compat")
 async def test_subscribe_resource(
     session_generator: SessionContextManager,
     server_can_subscribe_resource: Server[object],
@@ -462,6 +466,7 @@ async def test_subscribe_resource(
         ),
     ],
 )
+@pytest.mark.xfail(reason="resource forwarding disabled for rmcp 0.17 compat")
 async def test_unsubscribe_resource(
     session_generator: SessionContextManager,
     server_can_unsubscribe_resource: Server[object],

@@ -1,7 +1,10 @@
 [project]
-name = "mcp-proxy"
-description = "A MCP server which proxies requests to a remote MCP server over streamable HTTP or SSE."
-authors = [{ name = "Sergey Parfenyuk", email = "sergey.parfenyuk@gmail.com" }]
+name = "mcp-proxy-plus"
+description = "Enhanced MCP proxy with health endpoint, graceful failure handling, env var expansion, API key auth, and rmcp 0.17 compatibility. Fork of sparfenyuk/mcp-proxy."
+authors = [
+    { name = "Claudio Ferreira Filho", email = "filhocf@gmail.com" },
+    { name = "Sergey Parfenyuk", email = "sergey.parfenyuk@gmail.com" },
+]
 license = { file = "LICENSE" }
 readme = "README.md"
 classifiers = [
@@ -26,7 +29,7 @@ classifiers = [
     "Topic :: Utilities",
     "Typing :: Typed",
 ]
-version = "0.10.0"
+version = "0.10.1"
 requires-python = ">=3.10"
 dependencies = ["httpx-auth>=0.22.0", "mcp>=1.17.0", "uvicorn>=0.34.0"]
 
@@ -35,13 +38,15 @@ requires = ["setuptools"]
 build-backend = "setuptools.build_meta"
 
 [project.urls]
-Homepage = "https://github.com/sparfenyuk/mcp-proxy"
-Source = "https://github.com/sparfenyuk/mcp-proxy"
-Documentation = "https://github.com/sparfenyuk/mcp-proxy"
-Changelog = "https://github.com/sparfenyuk/mcp-proxy/releases"
+Homepage = "https://github.com/filhocf/mcp-proxy"
+Source = "https://github.com/filhocf/mcp-proxy"
+Documentation = "https://github.com/filhocf/mcp-proxy"
+Changelog = "https://github.com/filhocf/mcp-proxy/releases"
+Upstream = "https://github.com/sparfenyuk/mcp-proxy"
 
 [project.scripts]
 mcp-proxy = "mcp_proxy.__main__:main"
+mcp-proxy-plus = "mcp_proxy.__main__:main"
 mcp-reverse-proxy = "mcp_proxy.__main__:client"
 
 [tool.setuptools.package-data]
