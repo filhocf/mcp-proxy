@@ -49,13 +49,14 @@ class APIKeyEntry:
 
     def is_tool_allowed(self, tool_name: str) -> bool:
         """Check if a tool is allowed for this key. denied_tools takes precedence."""
+        tool_lower = tool_name.lower()
         # Check denied first (takes precedence)
         for pattern in self.denied_tools:
-            if fnmatch.fnmatch(tool_name, pattern):
+            if fnmatch.fnmatch(tool_lower, pattern.lower()):
                 return False
         # Check allowed
         for pattern in self.allowed_tools:
-            if pattern == "*" or fnmatch.fnmatch(tool_name, pattern):
+            if pattern == "*" or fnmatch.fnmatch(tool_lower, pattern.lower()):
                 return True
         return False
 
@@ -210,12 +211,19 @@ class RBACToolMiddleware:
         # Buffer the body to inspect JSON-RPC method
         body_parts: list[bytes] = []
         body_complete = False
+        body_size = 0
+        max_body_size = 1 * 1024 * 1024  # 1MB
 
         async def buffering_receive() -> dict:
-            nonlocal body_complete
+            nonlocal body_complete, body_size
             msg = await receive()
             if msg["type"] == "http.request":
-                body_parts.append(msg.get("body", b""))
+                chunk = msg.get("body", b"")
+                body_size += len(chunk)
+                if body_size > max_body_size:
+                    body_complete = True
+                    return msg
+                body_parts.append(chunk)
                 body_complete = not msg.get("more_body", False)
             return msg
 
@@ -223,17 +231,25 @@ class RBACToolMiddleware:
         while not body_complete:
             await buffering_receive()
 
+        if body_size > max_body_size:
+            response = JSONResponse(
+                {"error": "Request body too large", "message": "Max body size is 1MB"},
+                status_code=413,
+            )
+            await response(scope, receive, send)
+            return
+
         full_body = b"".join(body_parts)
 
-        # Try to parse as JSON-RPC and check for tools/call
-        tool_name = self._extract_tool_name(full_body)
-        if tool_name and not entry.is_tool_allowed(tool_name):
+        # Try to parse as JSON-RPC and check for tools/call (single or batch)
+        denied_tool = self._check_rbac(full_body, entry)
+        if denied_tool:
             response = JSONResponse(
                 {
                     "jsonrpc": "2.0",
                     "error": {
                         "code": -32600,
-                        "message": f"Forbidden: tool '{tool_name}' is not allowed for key '{entry.name}'",
+                        "message": f"Forbidden: tool '{denied_tool}' is not allowed for key '{entry.name}'",
                     },
                     "id": self._extract_request_id(full_body),
                 },
@@ -253,6 +269,21 @@ class RBACToolMiddleware:
             return await receive()
 
         await self._app(scope, replay_receive, send)
+
+    @staticmethod
+    def _check_rbac(body: bytes, entry: "APIKeyEntry") -> str | None:
+        """Check RBAC for single or batch JSON-RPC requests. Returns denied tool name or None."""
+        try:
+            data = json.loads(body)
+        except (json.JSONDecodeError, TypeError):
+            return None
+        requests = data if isinstance(data, list) else [data]
+        for req in requests:
+            if isinstance(req, dict) and req.get("method") == "tools/call":
+                tool_name = req.get("params", {}).get("name")
+                if tool_name and not entry.is_tool_allowed(tool_name):
+                    return tool_name
+        return None
 
     @staticmethod
     def _extract_tool_name(body: bytes) -> str | None:
