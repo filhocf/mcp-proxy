@@ -1,12 +1,8 @@
 """Minimal HTML dashboard for MCP proxy server monitoring."""
 
-import logging
-
 from starlette.requests import Request
 from starlette.responses import HTMLResponse
 from starlette.routing import Route
-
-logger = logging.getLogger(__name__)
 
 DASHBOARD_HTML = """<!DOCTYPE html>
 <html lang="en">
@@ -35,6 +31,7 @@ tr:hover{background:#1a2744}
 <div class="meta">Auto-refresh: 5s | <span id="last-update">loading...</span></div>
 <div id="content"><p id="loading">Loading status...</p></div>
 <script>
+function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
 async function refresh(){
   try{
     const r=await fetch('/status');
@@ -48,17 +45,17 @@ async function refresh(){
       for(const name of names){
         const s=servers[name];
         const st=s.status||'unknown';
-        let cls='status-'+st;
+        let cls='status-'+esc(st);
         if(st==='circuit-open')cls='status-circuit-open';
-        html+=`<tr><td><b>${name}</b></td><td><span class="status ${cls}">${st}</span></td><td>${s.command||'-'}</td></tr>`;
+        html+=`<tr><td><b>${esc(name)}</b></td><td><span class="status ${cls}">${esc(st)}</span></td><td>${esc(s.command||'-')}</td></tr>`;
       }
     }
     html+='</table>';
-    html+=`<p class="meta" style="margin-top:12px">Healthy: ${d.servers_running}/${d.servers_total} | Last activity: ${d.api_last_activity||'-'}</p>`;
+    html+=`<p class="meta" style="margin-top:12px">Healthy: ${esc(d.servers_running)}/${esc(d.servers_total)} | Last activity: ${esc(d.api_last_activity||'-')}</p>`;
     document.getElementById('content').innerHTML=html;
     document.getElementById('last-update').textContent=new Date().toLocaleTimeString();
   }catch(e){
-    document.getElementById('content').innerHTML='<p class="error">Failed to fetch status: '+e.message+'</p>';
+    document.getElementById('content').innerHTML='<p class="error">Failed to fetch status: '+esc(e.message)+'</p>';
   }
 }
 refresh();
