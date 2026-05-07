@@ -444,12 +444,21 @@ def _configure_named_servers_from_cli(
 
 def _create_mcp_settings(args_parsed: argparse.Namespace) -> MCPServerSettings:
     """Create MCP server settings from parsed arguments."""
+    from .mcp_server import APIKeyEntry, load_api_keys_config
+
     expose_headers = (
         list(DEFAULT_EXPOSE_HEADERS)
         if not args_parsed.expose_headers
         else list(args_parsed.expose_headers)
     )
     api_key = args_parsed.api_key or os.getenv("MCP_PROXY_API_KEY")
+
+    # Load multi-key config if available
+    api_keys: list[APIKeyEntry] | None = None
+    api_keys_file = os.getenv("MCP_PROXY_API_KEYS_FILE")
+    if api_keys_file:
+        api_keys = load_api_keys_config(api_keys_file)
+
     return MCPServerSettings(
         bind_host=args_parsed.host if args_parsed.host is not None else args_parsed.sse_host,
         port=args_parsed.port if args_parsed.port is not None else args_parsed.sse_port,
@@ -458,6 +467,7 @@ def _create_mcp_settings(args_parsed: argparse.Namespace) -> MCPServerSettings:
         expose_headers=expose_headers,
         log_level="DEBUG" if args_parsed.debug else args_parsed.log_level,
         api_key=api_key,
+        api_keys=api_keys,
     )
 
 
