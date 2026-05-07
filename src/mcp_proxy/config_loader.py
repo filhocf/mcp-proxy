@@ -6,17 +6,29 @@ This module provides functionality to load named server configurations from JSON
 import json
 import logging
 import os
+from dataclasses import dataclass
 from pathlib import Path
 
 from mcp.client.stdio import StdioServerParameters
 
+from .rate_limiter import DEFAULT_MAX_CONCURRENT, DEFAULT_MAX_WAIT_SECONDS
+
 logger = logging.getLogger(__name__)
+
+
+@dataclass
+class ServerConfig:
+    """Extended server configuration with rate limiting parameters."""
+
+    stdio_params: StdioServerParameters
+    max_concurrent: int = DEFAULT_MAX_CONCURRENT
+    max_wait_seconds: float = DEFAULT_MAX_WAIT_SECONDS
 
 
 def load_named_server_configs_from_file(
     config_file_path: str | Path,
     base_env: dict[str, str],
-) -> dict[str, StdioServerParameters]:
+) -> dict[str, ServerConfig]:
     """Loads named server configurations from a JSON file.
 
     Args:
@@ -24,14 +36,14 @@ def load_named_server_configs_from_file(
         base_env: The base environment dictionary to be inherited by servers.
 
     Returns:
-        A dictionary of named server parameters.
+        A dictionary of named server configurations.
 
     Raises:
         FileNotFoundError: If the config file is not found.
         json.JSONDecodeError: If the config file contains invalid JSON.
         ValueError: If the config file format is invalid.
     """
-    named_stdio_params: dict[str, StdioServerParameters] = {}
+    named_configs: dict[str, ServerConfig] = {}
     logger.info("Loading named server configurations from: %s", config_file_path)
 
     try:
@@ -90,11 +102,15 @@ def load_named_server_configs_from_file(
             {k: os.path.expandvars(os.path.expanduser(v)) for k, v in env.items()}
         )
 
-        named_stdio_params[name] = StdioServerParameters(
-            command=command,
-            args=command_args,
-            env=new_env,
-            cwd=None,
+        named_configs[name] = ServerConfig(
+            stdio_params=StdioServerParameters(
+                command=command,
+                args=command_args,
+                env=new_env,
+                cwd=None,
+            ),
+            max_concurrent=server_config.get("max_concurrent", DEFAULT_MAX_CONCURRENT),
+            max_wait_seconds=server_config.get("max_wait_seconds", DEFAULT_MAX_WAIT_SECONDS),
         )
         logger.info(
             "Configured named server '%s' from config: %s %s",
@@ -103,4 +119,4 @@ def load_named_server_configs_from_file(
             " ".join(command_args),
         )
 
-    return named_stdio_params
+    return named_configs

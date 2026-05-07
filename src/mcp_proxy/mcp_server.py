@@ -21,7 +21,9 @@ from starlette.responses import JSONResponse, Response
 from starlette.routing import BaseRoute, Mount, Route
 from starlette.types import Receive, Scope, Send
 
+from .config_loader import ServerConfig
 from .proxy_server import create_proxy_server
+from .rate_limiter import ServerRateLimiter, create_rate_limited_call_tool
 
 logger = logging.getLogger(__name__)
 
@@ -210,10 +212,16 @@ async def run_mcp_server(
     mcp_settings: MCPServerSettings,
     default_server_params: StdioServerParameters | None = None,
     named_server_params: dict[str, StdioServerParameters] | None = None,
+    named_server_configs: dict[str, ServerConfig] | None = None,
 ) -> None:
     """Run stdio client(s) and expose an MCP server with multiple possible backends."""
-    if named_server_params is None:
-        named_server_params = {}
+    # Support both old-style named_server_params and new ServerConfig
+    if named_server_configs is None:
+        named_server_configs = {}
+    if named_server_params:
+        for name, params in named_server_params.items():
+            if name not in named_server_configs:
+                named_server_configs[name] = ServerConfig(stdio_params=params)
 
     all_routes: list[BaseRoute] = [
         Route("/status", endpoint=_handle_status),  # Global status endpoint
@@ -253,7 +261,8 @@ async def run_mcp_server(
 
         # Setup named servers
         failed_servers: list[str] = []
-        for name, params in named_server_params.items():
+        for name, server_config in named_server_configs.items():
+            params = server_config.stdio_params
             try:
                 logger.info(
                     "Setting up named server '%s': %s %s",
@@ -264,6 +273,22 @@ async def run_mcp_server(
                 stdio_streams_named = await stack.enter_async_context(stdio_client(params))
                 session_named = await stack.enter_async_context(ClientSession(*stdio_streams_named))
                 proxy_named = await create_proxy_server(session_named)
+
+                # Apply rate limiting if configured
+                from mcp import types as mcp_types
+                if mcp_types.CallToolRequest in proxy_named.request_handlers:
+                    rate_limiter = ServerRateLimiter(
+                        max_concurrent=server_config.max_concurrent,
+                        max_wait_seconds=server_config.max_wait_seconds,
+                    )
+                    original_handler = proxy_named.request_handlers[mcp_types.CallToolRequest]
+                    proxy_named.request_handlers[mcp_types.CallToolRequest] = create_rate_limited_call_tool(
+                        original_handler, rate_limiter, name,
+                    )
+                    logger.info(
+                        "Rate limiting enabled for '%s': max_concurrent=%d, max_wait=%.1fs",
+                        name, server_config.max_concurrent, server_config.max_wait_seconds,
+                    )
 
                 instance_routes_named, http_manager_named = create_single_instance_routes(
                     proxy_named,
@@ -297,12 +322,12 @@ async def run_mcp_server(
                 ", ".join(failed_servers),
             )
 
-        if not default_server_params and not named_server_params:
+        if not default_server_params and not named_server_configs:
             logger.error("No servers configured to run.")
             return
 
         # Check if all named servers failed and there's no default server
-        has_running_named = len(named_server_params) > len(failed_servers)
+        has_running_named = len(named_server_configs) > len(failed_servers)
         if not default_server_params and not has_running_named:
             logger.error(
                 "No servers are running. All named servers failed to start.",
@@ -353,7 +378,7 @@ async def run_mcp_server(
             sse_urls.append(f"{base_url}/sse")
 
         # Add named servers
-        sse_urls.extend([f"{base_url}/servers/{name}/sse" for name in named_server_params])
+        sse_urls.extend([f"{base_url}/servers/{name}/sse" for name in named_server_configs])
 
         # Display the SSE URLs prominently
         if sse_urls:
