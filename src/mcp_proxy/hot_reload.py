@@ -3,6 +3,7 @@
 import asyncio
 import json
 import logging
+import secrets
 import signal
 import sys
 from pathlib import Path
@@ -26,19 +27,25 @@ class ConfigReloader:
         self._config_path = Path(config_path)
         self._on_reload = on_reload
         self._last_config: dict[str, Any] = {}
+        self._reload_lock = asyncio.Lock()
 
-    def load_current(self) -> dict[str, Any]:
-        """Load and return current config from file."""
+    def _load_current_sync(self) -> dict[str, Any]:
+        """Load and return current config from file (blocking I/O)."""
         with self._config_path.open() as f:
             return json.load(f)
 
+    async def load_current(self) -> dict[str, Any]:
+        """Load and return current config from file (non-blocking)."""
+        return await asyncio.to_thread(self._load_current_sync)
+
     async def reload(self) -> dict[str, Any]:
         """Reload config and apply changes. Returns diff summary."""
-        try:
-            new_config = self.load_current()
-        except (FileNotFoundError, json.JSONDecodeError) as e:
-            logger.error("Failed to reload config: %s", e)
-            return {"error": str(e)}
+        async with self._reload_lock:
+            try:
+                new_config = await self.load_current()
+            except (FileNotFoundError, json.JSONDecodeError) as e:
+                logger.error("Failed to reload config: %s", e)
+                return {"error": str(e)}
 
         new_servers = new_config.get("mcpServers", {})
         old_servers = self._last_config.get("mcpServers", {})
@@ -92,7 +99,8 @@ def create_reload_route(
     async def handle_reload(request: Request) -> JSONResponse:
         if api_key:
             auth = request.headers.get("authorization", "")
-            if auth != f"Bearer {api_key}":
+            token = auth.removeprefix("Bearer ")
+            if not auth.startswith("Bearer ") or not secrets.compare_digest(token, api_key):
                 return JSONResponse(
                     {"error": "Unauthorized"}, status_code=401,
                     headers={"WWW-Authenticate": "Bearer"},
