@@ -4,7 +4,9 @@ import contextlib
 import fnmatch
 import json
 import logging
+import os
 import re
+import time
 from collections.abc import AsyncIterator, Awaitable, Callable
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -277,6 +279,162 @@ class RBACToolMiddleware:
             pass
         return None
 
+
+class AuditLogger:
+    """Append-only JSONL audit logger with rotating file handler."""
+
+    _instance_count: int = 0
+
+    def __init__(self, log_path: str | Path, max_bytes: int = 10 * 1024 * 1024, backup_count: int = 5) -> None:
+        from logging.handlers import RotatingFileHandler
+
+        self._path = Path(log_path)
+        self._path.parent.mkdir(parents=True, exist_ok=True)
+
+        AuditLogger._instance_count += 1
+        logger_name = f"mcp_proxy.audit.{AuditLogger._instance_count}"
+        self._logger = logging.getLogger(logger_name)
+        self._logger.setLevel(logging.INFO)
+        self._logger.propagate = False
+
+        # Remove existing handlers to avoid duplicates
+        self._logger.handlers.clear()
+        handler = RotatingFileHandler(
+            str(self._path), maxBytes=max_bytes, backupCount=backup_count
+        )
+        handler.setFormatter(logging.Formatter("%(message)s"))
+        self._logger.addHandler(handler)
+
+    def log(
+        self,
+        *,
+        api_key_name: str,
+        server: str,
+        tool: str,
+        args_summary: str,
+        result_status: str,
+        latency_ms: float,
+    ) -> None:
+        """Write a single audit entry."""
+        entry = {
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "api_key_name": api_key_name,
+            "server": server,
+            "tool": tool,
+            "args_summary": args_summary[:200],
+            "result_status": result_status,
+            "latency_ms": round(latency_ms, 2),
+        }
+        self._logger.info(json.dumps(entry, separators=(",", ":")))
+
+
+class AuditLogMiddleware:
+    """Middleware that logs tool calls to an audit JSONL file.
+
+    Must be placed after APIKeyMiddleware (which stores api_key_entry in scope state).
+    """
+
+    def __init__(self, app: Any, *, audit_logger: AuditLogger) -> None:
+        self._app = app
+        self._audit = audit_logger
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http" or scope.get("method", "") != "POST":
+            await self._app(scope, receive, send)
+            return
+
+        # Buffer the request body
+        body_parts: list[bytes] = []
+        body_complete = False
+
+        async def buffering_receive() -> dict:
+            nonlocal body_complete
+            msg = await receive()
+            if msg["type"] == "http.request":
+                body_parts.append(msg.get("body", b""))
+                body_complete = not msg.get("more_body", False)
+            return msg
+
+        while not body_complete:
+            await buffering_receive()
+
+        full_body = b"".join(body_parts)
+
+        # Check if this is a tools/call request
+        tool_name = None
+        args_summary = ""
+        try:
+            data = json.loads(full_body)
+            if isinstance(data, dict) and data.get("method") == "tools/call":
+                params = data.get("params", {})
+                tool_name = params.get("name", "")
+                args = params.get("arguments", {})
+                args_summary = json.dumps(args, separators=(",", ":"))[:200]
+        except (json.JSONDecodeError, TypeError):
+            pass
+
+        if not tool_name:
+            # Not a tool call, pass through without auditing
+            body_sent = False
+
+            async def replay_receive_passthrough() -> dict:
+                nonlocal body_sent
+                if not body_sent:
+                    body_sent = True
+                    return {"type": "http.request", "body": full_body, "more_body": False}
+                return await receive()
+
+            await self._app(scope, replay_receive_passthrough, send)
+            return
+
+        # Extract context
+        state = scope.get("state", {})
+        entry: APIKeyEntry | None = state.get("api_key_entry")
+        api_key_name = entry.name if entry else "anonymous"
+        server_name = APIKeyMiddleware._extract_server_name(scope.get("path", "")) or "unknown"
+
+        # Capture response status
+        response_status = "unknown"
+        start_time = time.perf_counter()
+
+        async def auditing_send(message: dict) -> None:
+            nonlocal response_status
+            if message["type"] == "http.response.start":
+                status_code = message.get("status", 0)
+                if status_code < 400:
+                    response_status = "success"
+                elif status_code == 403:
+                    response_status = "forbidden"
+                else:
+                    response_status = "error"
+            await send(message)
+
+        # Replay body
+        body_sent = False
+
+        async def replay_receive() -> dict:
+            nonlocal body_sent
+            if not body_sent:
+                body_sent = True
+                return {"type": "http.request", "body": full_body, "more_body": False}
+            return await receive()
+
+        try:
+            await self._app(scope, replay_receive, auditing_send)
+        except Exception:
+            response_status = "error"
+            raise
+        finally:
+            latency_ms = (time.perf_counter() - start_time) * 1000
+            self._audit.log(
+                api_key_name=api_key_name,
+                server=server_name,
+                tool=tool_name,
+                args_summary=args_summary,
+                result_status=response_status,
+                latency_ms=latency_ms,
+            )
+
 DEFAULT_EXPOSE_HEADERS: Final[tuple[str, ...]] = ("mcp-session-id",)
 
 
@@ -541,6 +699,16 @@ async def run_mcp_server(
                 Middleware(APIKeyMiddleware, api_key=mcp_settings.api_key),
             )
             logger.info("API key authentication enabled")
+
+        # Audit log middleware (after auth, so it has access to api_key_entry)
+        audit_log_path = os.getenv(
+            "MCP_PROXY_AUDIT_LOG",
+            os.path.expanduser("~/dtp/ai-configs/mcp-proxy/logs/audit.jsonl"),
+        )
+        if audit_log_path:
+            audit_logger = AuditLogger(audit_log_path)
+            middleware.append(Middleware(AuditLogMiddleware, audit_logger=audit_logger))
+            logger.info("Audit logging enabled: %s", audit_log_path)
 
         starlette_app = Starlette(
             debug=(mcp_settings.log_level == "DEBUG"),
