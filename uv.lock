@@ -456,8 +456,8 @@ wheels = [
 ]
 
 [[package]]
-name = "mcp-proxy"
-version = "0.10.0"
+name = "mcp-proxy-plus"
+version = "0.10.1"
 source = { editable = "." }
 dependencies = [
     { name = "httpx-auth" },
