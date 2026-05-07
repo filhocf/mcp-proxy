@@ -170,37 +170,34 @@ async def create_proxy_server(
                 )
 
             retry_cfg = get_retry_config(server_name) if server_name else None
-            max_attempts = retry_cfg.max_attempts if retry_cfg else 1
+            max_attempts = max(1, retry_cfg.max_attempts) if retry_cfg else 1
 
             last_exc: Exception | None = None
+            # Setup invariant: compute once before retry loop
+            from mcp.server.lowlevel.server import request_ctx
+            ctx = request_ctx.get()
+            meta_dict = dict(req.params.meta) if req.params.meta else None
+            _stderr = sys.stderr
+
+            async def progress_forwarder(progress: float, total: float | None, message: str | None) -> None:
+                progress_token = meta_dict.get('progressToken') if meta_dict else None
+                if progress_token is not None:
+                    await ctx.session.send_progress_notification(
+                        progress_token=progress_token,
+                        progress=progress,
+                        total=total,
+                        message=message,
+                        related_request_id=str(ctx.request_id),
+                    )
+                else:
+                    print(
+                        "[MCP-PROXY] WARNING: No progressToken in meta, cannot forward progress notification",
+                        file=_stderr,
+                        flush=True,
+                    )
+
             for attempt in range(max_attempts):
                 try:
-                    # Get request context to access server session for progress forwarding
-                    from mcp.server.lowlevel.server import request_ctx
-                    ctx = request_ctx.get()
-                    
-                    # Convert meta to dict if present (required for TypedDict compatibility)
-                    meta_dict = dict(req.params.meta) if req.params.meta else None
-
-                    # Create progress forwarder callback
-                    _stderr = sys.stderr
-                    async def progress_forwarder(progress: float, total: float | None, message: str | None) -> None:
-                        progress_token = meta_dict.get('progressToken') if meta_dict else None
-                        if progress_token is not None:
-                            await ctx.session.send_progress_notification(
-                                progress_token=progress_token,
-                                progress=progress,
-                                total=total,
-                                message=message,
-                                related_request_id=str(ctx.request_id),
-                            )
-                        else:
-                            print(
-                                "[MCP-PROXY] WARNING: No progressToken in meta, cannot forward progress notification",
-                                file=_stderr,
-                                flush=True,
-                            )
-
                     result = await remote_app.call_tool(
                         req.params.name,
                         (req.params.arguments or {}),

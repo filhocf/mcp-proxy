@@ -27,18 +27,13 @@ def compute_delay(attempt: int, config: RetryConfig) -> float:
 
 def is_retryable_error(exc: Exception) -> bool:
     """Check if an exception is a transient connection/timeout error worth retrying."""
-    # Connection errors, timeouts, and broken pipes are retryable
     retryable_types = (
         ConnectionError,
         TimeoutError,
         OSError,
         asyncio.TimeoutError,
     )
-    # Also check for common error messages in generic exceptions
-    if isinstance(exc, retryable_types):
-        return True
-    msg = str(exc).lower()
-    return any(keyword in msg for keyword in ("connection", "timeout", "broken pipe", "eof"))
+    return isinstance(exc, retryable_types)
 
 
 # Global registry of retry configs per server name
