@@ -21,6 +21,8 @@ from starlette.responses import JSONResponse, Response
 from starlette.routing import BaseRoute, Mount, Route
 from starlette.types import Receive, Scope, Send
 
+from mcp import types as mcp_types
+
 from .config_loader import ServerConfig
 from .proxy_server import create_proxy_server
 from .rate_limiter import ServerRateLimiter, create_rate_limited_call_tool
@@ -275,7 +277,6 @@ async def run_mcp_server(
                 proxy_named = await create_proxy_server(session_named)
 
                 # Apply rate limiting if configured
-                from mcp import types as mcp_types
                 if mcp_types.CallToolRequest in proxy_named.request_handlers:
                     rate_limiter = ServerRateLimiter(
                         max_concurrent=server_config.max_concurrent,

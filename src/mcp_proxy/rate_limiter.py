@@ -15,6 +15,10 @@ class ServerRateLimiter:
     """Limits concurrent requests to a server using asyncio.Semaphore."""
 
     def __init__(self, max_concurrent: int = DEFAULT_MAX_CONCURRENT, max_wait_seconds: float = DEFAULT_MAX_WAIT_SECONDS) -> None:
+        if max_concurrent < 1:
+            raise ValueError("max_concurrent must be >= 1")
+        if max_wait_seconds <= 0:
+            raise ValueError("max_wait_seconds must be > 0")
         self._semaphore = asyncio.Semaphore(max_concurrent)
         self._max_wait_seconds = max_wait_seconds
         self._max_concurrent = max_concurrent
