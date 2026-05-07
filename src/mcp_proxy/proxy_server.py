@@ -10,6 +10,7 @@ import typing as t
 
 from mcp import server, types
 from mcp.client.session import ClientSession
+from mcp.server.lowlevel.server import request_ctx
 
 from .access_log import RequestTimer, log_request
 
@@ -154,7 +155,6 @@ async def create_proxy_server(
         async def _call_tool(req: types.CallToolRequest) -> types.ServerResult:
             try:
                 # Get request context to access server session for progress forwarding
-                from mcp.server.lowlevel.server import request_ctx
                 ctx = request_ctx.get()
                 
                 # Convert meta to dict if present (required for TypedDict compatibility)
@@ -218,7 +218,7 @@ async def create_proxy_server(
                 log_request(
                     server=app.name,
                     tool=req.params.name,
-                    latency_ms=timer.elapsed_ms if 'timer' in dir() else 0,
+                    latency_ms=timer.elapsed_ms if 'timer' in locals() else 0,
                     status="error",
                 )
                 return types.ServerResult(

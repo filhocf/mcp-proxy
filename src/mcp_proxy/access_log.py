@@ -4,6 +4,7 @@ import json
 import logging
 import os
 import time
+from datetime import datetime, timezone
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
@@ -41,8 +42,6 @@ def log_request(
     client_ip: str = "",
 ) -> None:
     """Log a structured JSON access entry."""
-    from datetime import datetime, timezone
-
     logger = get_access_logger()
     entry = {
         "timestamp": datetime.now(timezone.utc).isoformat(),
