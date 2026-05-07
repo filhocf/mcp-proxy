@@ -11,6 +11,8 @@ import typing as t
 from mcp import server, types
 from mcp.client.session import ClientSession
 
+from .circuit_breaker import CircuitState, get_circuit_breaker
+
 logger = logging.getLogger(__name__)
 
 
@@ -51,6 +53,7 @@ def create_roots_forwarding_callback(
 
 async def create_proxy_server(
     remote_app: ClientSession,
+    server_name: str = "",
 ) -> server.Server[object]:  # noqa: C901, PLR0915
     """Create a server instance from a remote app.
 
@@ -150,6 +153,20 @@ async def create_proxy_server(
         app.request_handlers[types.ListToolsRequest] = _list_tools
 
         async def _call_tool(req: types.CallToolRequest) -> types.ServerResult:
+            # Circuit breaker check
+            cb = get_circuit_breaker(server_name) if server_name else None
+            if cb and not cb.allow_request():
+                return types.ServerResult(
+                    types.CallToolResult(
+                        content=[types.TextContent(
+                            type="text",
+                            text=f"Circuit breaker OPEN for server '{server_name}'. "
+                            f"Server is temporarily unavailable.",
+                        )],
+                        isError=True,
+                    ),
+                )
+
             try:
                 # Get request context to access server session for progress forwarding
                 from mcp.server.lowlevel.server import request_ctx
@@ -201,8 +218,17 @@ async def create_proxy_server(
                         types.TextContent(type="text", text=fallback_text),
                     )
                     result = result.model_copy(update={"content": new_content})
+
+                # Record success for circuit breaker
+                if cb:
+                    cb.record_success()
+
                 return types.ServerResult(result)
             except Exception as e:  # noqa: BLE001
+                # Record failure for circuit breaker (connection/transport errors)
+                if cb:
+                    cb.record_failure()
+
                 return types.ServerResult(
                     types.CallToolResult(
                         content=[types.TextContent(type="text", text=str(e))],
