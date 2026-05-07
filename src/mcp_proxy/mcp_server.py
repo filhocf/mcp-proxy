@@ -5,6 +5,7 @@ import fnmatch
 import json
 import logging
 import re
+import secrets
 from collections.abc import AsyncIterator, Awaitable, Callable
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -50,13 +51,21 @@ class APIKeyEntry:
 
 def load_api_keys_config(config_path: str | Path) -> list[APIKeyEntry]:
     """Load API keys configuration from a JSON file."""
-    with Path(config_path).open() as f:
-        data = json.load(f)
+    try:
+        with Path(config_path).open() as f:
+            data = json.load(f)
+    except (json.JSONDecodeError, OSError) as e:
+        raise ValueError(f"Failed to load API keys config from {config_path}: {e}") from e
     entries = []
+    seen_keys: set[str] = set()
     for item in data.get("api_keys", []):
+        key = item["key"]
+        if key in seen_keys:
+            logger.warning("Duplicate API key found for name '%s' — only first entry will be used", item.get("name", "unknown"))
+        seen_keys.add(key)
         entries.append(
             APIKeyEntry(
-                key=item["key"],
+                key=key,
                 name=item["name"],
                 role=item.get("role", "user"),
                 allowed_servers=item.get("allowed_servers", ["*"]),
@@ -114,7 +123,7 @@ class APIKeyMiddleware:
         if auth_value.startswith("Bearer "):
             token = auth_value[7:]
 
-        entry = self._keys.get(token)
+        entry = self._find_key_entry(token)
         if not entry:
             response = JSONResponse(
                 {"error": "Unauthorized", "message": "Invalid or missing API key"},
@@ -142,6 +151,13 @@ class APIKeyMiddleware:
         scope["state"]["api_key_entry"] = entry
 
         await self._app(scope, receive, send)
+
+    def _find_key_entry(self, token: str) -> APIKeyEntry | None:
+        """Find API key entry using timing-safe comparison."""
+        for key, entry in self._keys.items():
+            if secrets.compare_digest(key, token):
+                return entry
+        return None
 
     @staticmethod
     def _extract_server_name(path: str) -> str | None:
