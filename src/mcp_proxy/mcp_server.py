@@ -47,6 +47,18 @@ class APIKeyEntry:
     allowed_tools: list[str] = field(default_factory=lambda: ["*"])
     denied_tools: list[str] = field(default_factory=list)
 
+    def is_tool_allowed(self, tool_name: str) -> bool:
+        """Check if a tool is allowed for this key. denied_tools takes precedence."""
+        # Check denied first (takes precedence)
+        for pattern in self.denied_tools:
+            if fnmatch.fnmatch(tool_name, pattern):
+                return False
+        # Check allowed
+        for pattern in self.allowed_tools:
+            if pattern == "*" or fnmatch.fnmatch(tool_name, pattern):
+                return True
+        return False
+
 
 def load_api_keys_config(config_path: str | Path) -> list[APIKeyEntry]:
     """Load API keys configuration from a JSON file."""
@@ -161,6 +173,109 @@ class APIKeyMiddleware:
             if pattern == "*" or fnmatch.fnmatch(server_name, pattern):
                 return True
         return False
+
+
+class RBACToolMiddleware:
+    """Middleware that intercepts JSON-RPC tools/call and checks tool permissions.
+
+    Must be placed after APIKeyMiddleware (which stores api_key_entry in scope state).
+    """
+
+    def __init__(self, app: Any) -> None:
+        self._app = app
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http":
+            await self._app(scope, receive, send)
+            return
+
+        method = scope.get("method", "")
+        if method != "POST":
+            await self._app(scope, receive, send)
+            return
+
+        # Get the API key entry from scope state (set by APIKeyMiddleware)
+        state = scope.get("state", {})
+        entry: APIKeyEntry | None = state.get("api_key_entry")
+        if not entry:
+            # No auth context — let it pass (auth middleware handles rejection)
+            await self._app(scope, receive, send)
+            return
+
+        # If key has wildcard allowed and no denied, skip body parsing
+        if "*" in entry.allowed_tools and not entry.denied_tools:
+            await self._app(scope, receive, send)
+            return
+
+        # Buffer the body to inspect JSON-RPC method
+        body_parts: list[bytes] = []
+        body_complete = False
+
+        async def buffering_receive() -> dict:
+            nonlocal body_complete
+            msg = await receive()
+            if msg["type"] == "http.request":
+                body_parts.append(msg.get("body", b""))
+                body_complete = not msg.get("more_body", False)
+            return msg
+
+        # Read the full body
+        while not body_complete:
+            await buffering_receive()
+
+        full_body = b"".join(body_parts)
+
+        # Try to parse as JSON-RPC and check for tools/call
+        tool_name = self._extract_tool_name(full_body)
+        if tool_name and not entry.is_tool_allowed(tool_name):
+            response = JSONResponse(
+                {
+                    "jsonrpc": "2.0",
+                    "error": {
+                        "code": -32600,
+                        "message": f"Forbidden: tool '{tool_name}' is not allowed for key '{entry.name}'",
+                    },
+                    "id": self._extract_request_id(full_body),
+                },
+                status_code=403,
+            )
+            await response(scope, receive, send)
+            return
+
+        # Replay the buffered body
+        body_sent = False
+
+        async def replay_receive() -> dict:
+            nonlocal body_sent
+            if not body_sent:
+                body_sent = True
+                return {"type": "http.request", "body": full_body, "more_body": False}
+            return await receive()
+
+        await self._app(scope, replay_receive, send)
+
+    @staticmethod
+    def _extract_tool_name(body: bytes) -> str | None:
+        """Extract tool name from a JSON-RPC tools/call request."""
+        try:
+            data = json.loads(body)
+            if isinstance(data, dict) and data.get("method") == "tools/call":
+                params = data.get("params", {})
+                return params.get("name")
+        except (json.JSONDecodeError, TypeError):
+            pass
+        return None
+
+    @staticmethod
+    def _extract_request_id(body: bytes) -> Any:
+        """Extract the JSON-RPC request id."""
+        try:
+            data = json.loads(body)
+            if isinstance(data, dict):
+                return data.get("id")
+        except (json.JSONDecodeError, TypeError):
+            pass
+        return None
 
 DEFAULT_EXPOSE_HEADERS: Final[tuple[str, ...]] = ("mcp-session-id",)
 
@@ -419,6 +534,7 @@ async def run_mcp_server(
             middleware.append(
                 Middleware(APIKeyMiddleware, api_keys=mcp_settings.api_keys),
             )
+            middleware.append(Middleware(RBACToolMiddleware))
             logger.info("Multi API key authentication enabled (%d keys)", len(mcp_settings.api_keys))
         elif mcp_settings.api_key:
             middleware.append(
