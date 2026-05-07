@@ -21,6 +21,7 @@ from starlette.responses import JSONResponse, Response
 from starlette.routing import BaseRoute, Mount, Route
 from starlette.types import Receive, Scope, Send
 
+from .metrics import get_metrics_status
 from .proxy_server import create_proxy_server
 
 logger = logging.getLogger(__name__)
@@ -123,12 +124,14 @@ async def _handle_status(_: Request) -> Response:
     total_count = len(_global_status["server_instances"])
     is_healthy = healthy_count > 0 or total_count == 0
     status_code = 200 if is_healthy else 503
+    metrics = get_metrics_status()
     return JSONResponse(
         {
             **_global_status,
             "healthy": is_healthy,
             "servers_running": healthy_count,
             "servers_total": total_count,
+            "metrics": metrics,
         },
         status_code=status_code,
     )

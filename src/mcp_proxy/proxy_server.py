@@ -6,10 +6,13 @@ This server is created independent of any transport mechanism.
 import json
 import logging
 import sys
+import time
 import typing as t
 
 from mcp import server, types
 from mcp.client.session import ClientSession
+
+from .metrics import record_metric
 
 logger = logging.getLogger(__name__)
 
@@ -181,12 +184,17 @@ async def create_proxy_server(
                             flush=True,
                         )
 
+                _t0 = time.perf_counter()
                 result = await remote_app.call_tool(
                     req.params.name,
                     (req.params.arguments or {}),
                     meta=meta_dict,
                     progress_callback=progress_forwarder,
                 )
+                # Record metrics
+                _elapsed = (time.perf_counter() - _t0) * 1000
+                record_metric(app.name, _elapsed, bool(result.isError))
+
                 # When the server returns structuredContent but no meaningful text,
                 # add a JSON text fallback so stdio clients can display the result.
                 content_items = result.content or []
@@ -203,6 +211,8 @@ async def create_proxy_server(
                     result = result.model_copy(update={"content": new_content})
                 return types.ServerResult(result)
             except Exception as e:  # noqa: BLE001
+                _elapsed = (time.perf_counter() - _t0) * 1000 if '_t0' in dir() else 0
+                record_metric(app.name, _elapsed, True)
                 return types.ServerResult(
                     types.CallToolResult(
                         content=[types.TextContent(type="text", text=str(e))],
