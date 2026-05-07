@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 
 LATENCY_WINDOW = 1000  # Keep last N latencies for percentile calculation
 
-_start_time: float = time.time()
+_start_time: float = time.monotonic()
 
 
 @dataclass
@@ -27,19 +27,18 @@ class ServerMetrics:
         if is_error:
             self.errors_total += 1
 
-    def latency_p50(self) -> float | None:
+    def _percentile(self, p: float) -> float | None:
         if not self.latencies:
             return None
         sorted_lat = sorted(self.latencies)
-        idx = int(len(sorted_lat) * 0.5)
+        idx = int(len(sorted_lat) * p)
         return round(sorted_lat[min(idx, len(sorted_lat) - 1)], 2)
 
+    def latency_p50(self) -> float | None:
+        return self._percentile(0.5)
+
     def latency_p99(self) -> float | None:
-        if not self.latencies:
-            return None
-        sorted_lat = sorted(self.latencies)
-        idx = int(len(sorted_lat) * 0.99)
-        return round(sorted_lat[min(idx, len(sorted_lat) - 1)], 2)
+        return self._percentile(0.99)
 
     def to_dict(self) -> dict:
         return {
@@ -68,7 +67,7 @@ class MetricsCollector:
         return {
             "per_server": {name: m.to_dict() for name, m in self._servers.items()},
             "global": {
-                "uptime_seconds": round(time.time() - _start_time, 1),
+                "uptime_seconds": round(time.monotonic() - _start_time, 1),
                 "total_requests": total_requests,
                 "total_errors": total_errors,
             },
