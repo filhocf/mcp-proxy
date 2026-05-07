@@ -346,17 +346,28 @@ class AuditLogMiddleware:
         # Buffer the request body
         body_parts: list[bytes] = []
         body_complete = False
+        body_size = 0
+        max_body_size = 1 * 1024 * 1024  # 1MB
 
         async def buffering_receive() -> dict:
-            nonlocal body_complete
+            nonlocal body_complete, body_size
             msg = await receive()
             if msg["type"] == "http.request":
-                body_parts.append(msg.get("body", b""))
+                chunk = msg.get("body", b"")
+                body_size += len(chunk)
+                if body_size > max_body_size:
+                    body_complete = True
+                    return msg
+                body_parts.append(chunk)
                 body_complete = not msg.get("more_body", False)
             return msg
 
         while not body_complete:
             await buffering_receive()
+
+        if body_size > max_body_size:
+            await self._app(scope, receive, send)
+            return
 
         full_body = b"".join(body_parts)
 
@@ -370,6 +381,8 @@ class AuditLogMiddleware:
                 tool_name = params.get("name", "")
                 args = params.get("arguments", {})
                 args_summary = json.dumps(args, separators=(",", ":"))[:200]
+                # Sanitize secrets from args_summary
+                args_summary = re.sub(r'(password|token|key|secret|credential)(=|":?)[^,}"]*', r'\1\2[REDACTED]', args_summary, flags=re.IGNORECASE)
         except (json.JSONDecodeError, TypeError):
             pass
 
@@ -688,27 +701,31 @@ async def run_mcp_server(
                 ),
             )
 
+        # Audit log middleware (wraps RBAC to capture rejections)
+        audit_log_path = os.getenv(
+            "MCP_PROXY_AUDIT_LOG",
+            os.path.expanduser("~/dtp/ai-configs/mcp-proxy/logs/audit.jsonl"),
+        )
+        audit_logger: AuditLogger | None = None
+        if audit_log_path:
+            audit_logger = AuditLogger(audit_log_path)
+            logger.info("Audit logging enabled: %s", audit_log_path)
+
         if mcp_settings.api_keys:
             middleware.append(
                 Middleware(APIKeyMiddleware, api_keys=mcp_settings.api_keys),
             )
+            if audit_logger:
+                middleware.append(Middleware(AuditLogMiddleware, audit_logger=audit_logger))
             middleware.append(Middleware(RBACToolMiddleware))
             logger.info("Multi API key authentication enabled (%d keys)", len(mcp_settings.api_keys))
         elif mcp_settings.api_key:
             middleware.append(
                 Middleware(APIKeyMiddleware, api_key=mcp_settings.api_key),
             )
+            if audit_logger:
+                middleware.append(Middleware(AuditLogMiddleware, audit_logger=audit_logger))
             logger.info("API key authentication enabled")
-
-        # Audit log middleware (after auth, so it has access to api_key_entry)
-        audit_log_path = os.getenv(
-            "MCP_PROXY_AUDIT_LOG",
-            os.path.expanduser("~/dtp/ai-configs/mcp-proxy/logs/audit.jsonl"),
-        )
-        if audit_log_path:
-            audit_logger = AuditLogger(audit_log_path)
-            middleware.append(Middleware(AuditLogMiddleware, audit_logger=audit_logger))
-            logger.info("Audit logging enabled: %s", audit_log_path)
 
         starlette_app = Starlette(
             debug=(mcp_settings.log_level == "DEBUG"),
