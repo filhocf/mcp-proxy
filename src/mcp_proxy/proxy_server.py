@@ -257,18 +257,6 @@ async def create_proxy_server(
                         ),
                     )
 
-            # Should not reach here, but safety net
-            if cb:
-                cb.record_failure()
-            span_attrs["status"] = "error"
-            span_attrs["error_message"] = str(last_exc)
-            return types.ServerResult(
-                types.CallToolResult(
-                    content=[types.TextContent(type="text", text=str(last_exc))],
-                    isError=True,
-                ),
-            )
-
         app.request_handlers[types.CallToolRequest] = _call_tool
 
     async def _send_progress_notification(req: types.ProgressNotification) -> None:
