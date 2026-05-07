@@ -1,5 +1,6 @@
 """Dynamic server registry for runtime registration/unregistration of MCP servers."""
 
+import asyncio
 import json
 import logging
 from pathlib import Path
@@ -21,7 +22,7 @@ class ServerRegistry:
     def servers(self) -> dict[str, dict[str, Any]]:
         return self._servers.copy()
 
-    def register(self, name: str, config: dict[str, Any]) -> StdioServerParameters:
+    async def register(self, name: str, config: dict[str, Any]) -> StdioServerParameters:
         """Register a new server. Returns StdioServerParameters for immediate use."""
         if name in self._servers:
             msg = f"Server '{name}' already registered"
@@ -31,17 +32,17 @@ class ServerRegistry:
             raise ValueError(msg)
 
         self._servers[name] = config
-        self._persist()
+        await asyncio.to_thread(self._persist)
         logger.info("Registered server '%s': %s", name, config.get("command"))
         return self._to_stdio_params(name, config)
 
-    def unregister(self, name: str) -> None:
+    async def unregister(self, name: str) -> None:
         """Unregister a server by name."""
         if name not in self._servers:
             msg = f"Server '{name}' not found"
             raise KeyError(msg)
         del self._servers[name]
-        self._persist()
+        await asyncio.to_thread(self._persist)
         logger.info("Unregistered server '%s'", name)
 
     def list_servers(self) -> list[dict[str, Any]]:

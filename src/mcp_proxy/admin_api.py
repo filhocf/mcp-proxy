@@ -2,6 +2,7 @@
 
 import json
 import logging
+import secrets
 
 from starlette.requests import Request
 from starlette.responses import JSONResponse
@@ -17,7 +18,8 @@ def _check_admin_auth(request: Request, api_key: str | None) -> JSONResponse | N
     if not api_key:
         return None  # No auth configured, allow all
     auth = request.headers.get("authorization", "")
-    if auth != f"Bearer {api_key}":
+    token = auth.removeprefix("Bearer ")
+    if not auth.startswith("Bearer ") or not secrets.compare_digest(token, api_key):
         return JSONResponse(
             {"error": "Unauthorized"}, status_code=401,
             headers={"WWW-Authenticate": "Bearer"},
@@ -38,6 +40,8 @@ def create_admin_routes(
     """
 
     async def list_servers(request: Request) -> JSONResponse:
+        if err := _check_admin_auth(request, api_key):
+            return err
         return JSONResponse({"servers": registry.list_servers()})
 
     async def register_server(request: Request) -> JSONResponse:
@@ -54,7 +58,7 @@ def create_admin_routes(
 
         config = {k: v for k, v in body.items() if k != "name"}
         try:
-            params = registry.register(name, config)
+            params = await registry.register(name, config)
         except ValueError as e:
             return JSONResponse({"error": str(e)}, status_code=409)
 
@@ -76,12 +80,15 @@ def create_admin_routes(
             return err
         name = request.path_params["name"]
         try:
-            registry.unregister(name)
+            await registry.unregister(name)
         except KeyError as e:
             return JSONResponse({"error": str(e)}, status_code=404)
 
         if on_unregister:
-            await on_unregister(name)
+            try:
+                await on_unregister(name)
+            except Exception:
+                logger.exception("Error during cleanup for server '%s'", name)
 
         return JSONResponse({"status": "unregistered", "name": name})
 
