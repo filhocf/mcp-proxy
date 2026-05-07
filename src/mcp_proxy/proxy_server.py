@@ -14,6 +14,7 @@ from mcp.client.session import ClientSession
 
 from .circuit_breaker import CircuitState, get_circuit_breaker
 from .retry import compute_delay, get_retry_config, is_retryable_error
+from .tracing import trace_tool_call
 
 logger = logging.getLogger(__name__)
 
@@ -155,9 +156,12 @@ async def create_proxy_server(
         app.request_handlers[types.ListToolsRequest] = _list_tools
 
         async def _call_tool(req: types.CallToolRequest) -> types.ServerResult:
+          with trace_tool_call(server_name, req.params.name) as span_attrs:
             # Circuit breaker check
             cb = get_circuit_breaker(server_name) if server_name else None
             if cb and not cb.allow_request():
+                span_attrs["status"] = "error"
+                span_attrs["error_message"] = "circuit_breaker_open"
                 return types.ServerResult(
                     types.CallToolResult(
                         content=[types.TextContent(
@@ -244,6 +248,8 @@ async def create_proxy_server(
                     if cb:
                         cb.record_failure()
 
+                    span_attrs["status"] = "error"
+                    span_attrs["error_message"] = str(e)
                     return types.ServerResult(
                         types.CallToolResult(
                             content=[types.TextContent(type="text", text=str(e))],
@@ -254,6 +260,8 @@ async def create_proxy_server(
             # Should not reach here, but safety net
             if cb:
                 cb.record_failure()
+            span_attrs["status"] = "error"
+            span_attrs["error_message"] = str(last_exc)
             return types.ServerResult(
                 types.CallToolResult(
                     content=[types.TextContent(type="text", text=str(last_exc))],
