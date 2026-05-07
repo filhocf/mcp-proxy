@@ -11,6 +11,8 @@ import typing as t
 from mcp import server, types
 from mcp.client.session import ClientSession
 
+from .access_log import RequestTimer, log_request
+
 logger = logging.getLogger(__name__)
 
 
@@ -181,12 +183,22 @@ async def create_proxy_server(
                             flush=True,
                         )
 
-                result = await remote_app.call_tool(
-                    req.params.name,
-                    (req.params.arguments or {}),
-                    meta=meta_dict,
-                    progress_callback=progress_forwarder,
+                with RequestTimer() as timer:
+                    result = await remote_app.call_tool(
+                        req.params.name,
+                        (req.params.arguments or {}),
+                        meta=meta_dict,
+                        progress_callback=progress_forwarder,
+                    )
+
+                # Log successful request
+                log_request(
+                    server=app.name,
+                    tool=req.params.name,
+                    latency_ms=timer.elapsed_ms,
+                    status="error" if result.isError else "ok",
                 )
+
                 # When the server returns structuredContent but no meaningful text,
                 # add a JSON text fallback so stdio clients can display the result.
                 content_items = result.content or []
@@ -203,6 +215,12 @@ async def create_proxy_server(
                     result = result.model_copy(update={"content": new_content})
                 return types.ServerResult(result)
             except Exception as e:  # noqa: BLE001
+                log_request(
+                    server=app.name,
+                    tool=req.params.name,
+                    latency_ms=timer.elapsed_ms if 'timer' in dir() else 0,
+                    status="error",
+                )
                 return types.ServerResult(
                     types.CallToolResult(
                         content=[types.TextContent(type="text", text=str(e))],
