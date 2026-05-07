@@ -7,10 +7,22 @@ import json
 import logging
 import os
 from pathlib import Path
+from typing import Any
 
 from mcp.client.stdio import StdioServerParameters
 
+from .circuit_breaker import register_circuit_breaker
+
 logger = logging.getLogger(__name__)
+
+
+# Store per-server extra config (circuit_breaker, retry, etc.)
+_server_configs: dict[str, dict[str, Any]] = {}
+
+
+def get_server_config(server_name: str) -> dict[str, Any]:
+    """Get extra config for a server."""
+    return _server_configs.get(server_name, {})
 
 
 def load_named_server_configs_from_file(
@@ -102,5 +114,16 @@ def load_named_server_configs_from_file(
             command,
             " ".join(command_args),
         )
+
+        # Load extra per-server config (circuit_breaker, retry, etc.)
+        extra_cfg: dict[str, Any] = {}
+        if "circuit_breaker" in server_config:
+            cb_cfg = server_config["circuit_breaker"]
+            register_circuit_breaker(name, cb_cfg)
+            extra_cfg["circuit_breaker"] = cb_cfg
+            logger.info("Circuit breaker configured for server '%s'", name)
+        if "retry" in server_config:
+            extra_cfg["retry"] = server_config["retry"]
+        _server_configs[name] = extra_cfg
 
     return named_stdio_params
