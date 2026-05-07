@@ -220,6 +220,8 @@ async def create_proxy_server(
                     result = result.model_copy(update={"content": new_content})
 
                 # Record success for circuit breaker
+                # Note: isError=True from tool is a logical error (not connection failure),
+                # so we still record success to not trip the breaker
                 if cb:
                     cb.record_success()
 
