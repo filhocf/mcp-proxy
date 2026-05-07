@@ -3,7 +3,7 @@
 import json
 import logging
 from typing import Any
-from urllib.parse import urljoin
+from urllib.parse import urljoin, quote
 
 import httpx
 
@@ -104,6 +104,7 @@ class RestToMcpAdapter:
         self._headers = headers or {}
         self._tools = parse_openapi_spec(spec)
         self._tool_map = {t["name"]: t for t in self._tools}
+        self._client = httpx.AsyncClient(headers=self._headers, timeout=30.0)
         logger.info(
             "REST adapter initialized: %s (%d tools)", base_url, len(self._tools),
         )
@@ -134,14 +135,14 @@ class RestToMcpAdapter:
         # Build URL with path parameters
         path = tool["path"]
         query_params: dict[str, str] = {}
-        headers = {**self._headers, **(extra_headers or {})}
+        headers = {**(extra_headers or {})}
 
         for param in tool["parameters"]:
             value = arguments.get(param["name"])
             if value is None:
                 continue
             if param["in"] == "path":
-                path = path.replace(f"{{{param['name']}}}", str(value))
+                path = path.replace(f"{{{param['name']}}}", quote(str(value), safe=""))
             elif param["in"] == "query":
                 query_params[param["name"]] = str(value)
             elif param["in"] == "header":
@@ -150,15 +151,16 @@ class RestToMcpAdapter:
         url = f"{self._base_url}{path}"
         body = arguments.get("body")
 
-        async with httpx.AsyncClient() as client:
-            resp = await client.request(
+        try:
+            resp = await self._client.request(
                 method=tool["method"],
                 url=url,
                 params=query_params or None,
                 json=body,
                 headers=headers,
-                timeout=30.0,
             )
+        except httpx.RequestError as e:
+            return {"error": f"Network error calling {tool['method']} {url}: {e}"}
 
         # Return response
         try:
@@ -171,10 +173,17 @@ class RestToMcpAdapter:
             "data": response_data,
         }
 
+    async def close(self) -> None:
+        """Close the underlying HTTP client."""
+        await self._client.aclose()
+
 
 async def load_spec_from_url(url: str, headers: dict[str, str] | None = None) -> dict[str, Any]:
     """Fetch OpenAPI spec from URL."""
     async with httpx.AsyncClient() as client:
-        resp = await client.get(url, headers=headers or {}, timeout=30.0)
-        resp.raise_for_status()
-        return resp.json()
+        try:
+            resp = await client.get(url, headers=headers or {}, timeout=30.0)
+            resp.raise_for_status()
+            return resp.json()
+        except httpx.RequestError as e:
+            raise RuntimeError(f"Failed to fetch OpenAPI spec from {url}: {e}") from e
