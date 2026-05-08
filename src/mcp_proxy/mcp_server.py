@@ -241,7 +241,7 @@ async def run_mcp_server(
             )
             stdio_streams = await stack.enter_async_context(stdio_client(default_server_params))
             session = await stack.enter_async_context(ClientSession(*stdio_streams))
-            proxy = await create_proxy_server(session, server_name="default")
+            proxy = await create_proxy_server(session, server_name="default")  # type: ignore
 
             instance_routes, http_manager = create_single_instance_routes(
                 proxy,
@@ -266,7 +266,7 @@ async def run_mcp_server(
                 )
                 stdio_streams_named = await stack.enter_async_context(stdio_client(params))
                 session_named = await stack.enter_async_context(ClientSession(*stdio_streams_named))
-                proxy_named = await create_proxy_server(session_named, server_name=name)
+                proxy_named = await create_proxy_server(session_named, server_name=name)  # type: ignore
 
                 instance_routes_named, http_manager_named = create_single_instance_routes(
                     proxy_named,
