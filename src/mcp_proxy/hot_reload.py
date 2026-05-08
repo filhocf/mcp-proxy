@@ -6,8 +6,9 @@ import logging
 import secrets
 import signal
 import sys
+from collections.abc import Awaitable, Callable
 from pathlib import Path
-from typing import Any, Callable, Awaitable
+from typing import Any
 
 from starlette.requests import Request
 from starlette.responses import JSONResponse
@@ -32,7 +33,7 @@ class ConfigReloader:
     def _load_current_sync(self) -> dict[str, Any]:
         """Load and return current config from file (blocking I/O)."""
         with self._config_path.open() as f:
-            return json.load(f)
+            return json.load(f)  # type: ignore
 
     async def load_current(self) -> dict[str, Any]:
         """Load and return current config from file (non-blocking)."""
@@ -44,7 +45,7 @@ class ConfigReloader:
             try:
                 new_config = await self.load_current()
             except (FileNotFoundError, json.JSONDecodeError) as e:
-                logger.error("Failed to reload config: %s", e)
+                logger.exception("Failed to reload config: %s", e)
                 return {"error": str(e)}
 
         new_servers = new_config.get("mcpServers", {})
@@ -53,16 +54,19 @@ class ConfigReloader:
         added = set(new_servers.keys()) - set(old_servers.keys())
         removed = set(old_servers.keys()) - set(new_servers.keys())
         updated = {
-            name for name in set(new_servers.keys()) & set(old_servers.keys())
+            name
+            for name in set(new_servers.keys()) & set(old_servers.keys())
             if new_servers[name] != old_servers[name]
         }
 
-        result = await self._on_reload({
-            "added": {name: new_servers[name] for name in added},
-            "removed": list(removed),
-            "updated": {name: new_servers[name] for name in updated},
-            "full_config": new_config,
-        })
+        await self._on_reload(
+            {
+                "added": {name: new_servers[name] for name in added},
+                "removed": list(removed),
+                "updated": {name: new_servers[name] for name in updated},
+                "full_config": new_config,
+            }
+        )
 
         self._last_config = new_config
         return {
@@ -102,7 +106,8 @@ def create_reload_route(
             token = auth.removeprefix("Bearer ")
             if not auth.startswith("Bearer ") or not secrets.compare_digest(token, api_key):
                 return JSONResponse(
-                    {"error": "Unauthorized"}, status_code=401,
+                    {"error": "Unauthorized"},
+                    status_code=401,
                     headers={"WWW-Authenticate": "Bearer"},
                 )
         result = await reloader.reload()

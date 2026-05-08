@@ -6,8 +6,8 @@ from pathlib import Path
 from unittest.mock import AsyncMock
 
 import pytest
-from starlette.testclient import TestClient
 from starlette.applications import Starlette
+from starlette.testclient import TestClient
 
 from mcp_proxy.hot_reload import ConfigReloader, create_reload_route
 
@@ -30,10 +30,12 @@ def config_file():
 
 class TestConfigReloader:
     @pytest.mark.asyncio
-    async def test_reload_detects_added(self, config_file):
+    async def test_reload_detects_added(self, config_file) -> None:
         on_reload = AsyncMock(return_value={})
         reloader = ConfigReloader(config_file, on_reload)
-        reloader.set_last_config({"mcpServers": {"server1": {"command": "cmd1", "args": ["--flag"]}}})
+        reloader.set_last_config(
+            {"mcpServers": {"server1": {"command": "cmd1", "args": ["--flag"]}}}
+        )
 
         result = await reloader.reload()
         assert "server2" in result["added"]
@@ -41,45 +43,51 @@ class TestConfigReloader:
         on_reload.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_reload_detects_removed(self, config_file):
+    async def test_reload_detects_removed(self, config_file) -> None:
         on_reload = AsyncMock(return_value={})
         reloader = ConfigReloader(config_file, on_reload)
-        reloader.set_last_config({
-            "mcpServers": {
-                "server1": {"command": "cmd1", "args": ["--flag"]},
-                "server2": {"command": "cmd2"},
-                "server3": {"command": "cmd3"},
+        reloader.set_last_config(
+            {
+                "mcpServers": {
+                    "server1": {"command": "cmd1", "args": ["--flag"]},
+                    "server2": {"command": "cmd2"},
+                    "server3": {"command": "cmd3"},
+                }
             }
-        })
+        )
 
         result = await reloader.reload()
         assert "server3" in result["removed"]
         assert result["added"] == []
 
     @pytest.mark.asyncio
-    async def test_reload_detects_updated(self, config_file):
+    async def test_reload_detects_updated(self, config_file) -> None:
         on_reload = AsyncMock(return_value={})
         reloader = ConfigReloader(config_file, on_reload)
-        reloader.set_last_config({
-            "mcpServers": {
-                "server1": {"command": "cmd1", "args": ["--old"]},
-                "server2": {"command": "cmd2"},
+        reloader.set_last_config(
+            {
+                "mcpServers": {
+                    "server1": {"command": "cmd1", "args": ["--old"]},
+                    "server2": {"command": "cmd2"},
+                }
             }
-        })
+        )
 
         result = await reloader.reload()
         assert "server1" in result["updated"]
 
     @pytest.mark.asyncio
-    async def test_reload_no_changes(self, config_file):
+    async def test_reload_no_changes(self, config_file) -> None:
         on_reload = AsyncMock(return_value={})
         reloader = ConfigReloader(config_file, on_reload)
-        reloader.set_last_config({
-            "mcpServers": {
-                "server1": {"command": "cmd1", "args": ["--flag"]},
-                "server2": {"command": "cmd2"},
+        reloader.set_last_config(
+            {
+                "mcpServers": {
+                    "server1": {"command": "cmd1", "args": ["--flag"]},
+                    "server2": {"command": "cmd2"},
+                }
             }
-        })
+        )
 
         result = await reloader.reload()
         assert result["added"] == []
@@ -87,7 +95,7 @@ class TestConfigReloader:
         assert result["updated"] == []
 
     @pytest.mark.asyncio
-    async def test_reload_invalid_file(self):
+    async def test_reload_invalid_file(self) -> None:
         on_reload = AsyncMock(return_value={})
         reloader = ConfigReloader("/nonexistent/file.json", on_reload)
         result = await reloader.reload()
@@ -95,7 +103,7 @@ class TestConfigReloader:
         on_reload.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_reload_invalid_json(self):
+    async def test_reload_invalid_json(self) -> None:
         with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
             f.write("not json{{{")
             path = f.name
@@ -106,7 +114,7 @@ class TestConfigReloader:
         assert "error" in result
         Path(path).unlink()
 
-    def test_load_current(self, config_file):
+    def test_load_current(self, config_file) -> None:
         reloader = ConfigReloader(config_file, AsyncMock())
         config = reloader.load_current()
         assert "mcpServers" in config
@@ -114,7 +122,7 @@ class TestConfigReloader:
 
 
 class TestReloadRoute:
-    def test_reload_endpoint_no_auth(self, config_file):
+    def test_reload_endpoint_no_auth(self, config_file) -> None:
         on_reload = AsyncMock(return_value={})
         reloader = ConfigReloader(config_file, on_reload)
         reloader.set_last_config({"mcpServers": {}})
@@ -130,7 +138,7 @@ class TestReloadRoute:
         assert "server1" in data["added"]
         assert "server2" in data["added"]
 
-    def test_reload_endpoint_with_auth(self, config_file):
+    def test_reload_endpoint_with_auth(self, config_file) -> None:
         on_reload = AsyncMock(return_value={})
         reloader = ConfigReloader(config_file, on_reload)
         reloader.set_last_config({"mcpServers": {}})
@@ -147,7 +155,7 @@ class TestReloadRoute:
         resp = client.post("/reload", headers={"Authorization": "Bearer admin-key"})
         assert resp.status_code == 200
 
-    def test_reload_endpoint_error(self):
+    def test_reload_endpoint_error(self) -> None:
         on_reload = AsyncMock(return_value={})
         reloader = ConfigReloader("/nonexistent.json", on_reload)
 
