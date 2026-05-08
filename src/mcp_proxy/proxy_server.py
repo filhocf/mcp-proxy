@@ -153,6 +153,7 @@ async def create_proxy_server(
             try:
                 # Get request context to access server session for progress forwarding
                 from mcp.server.lowlevel.server import request_ctx  # noqa: PLC0415
+
                 ctx = request_ctx.get()
 
                 # Convert meta to dict if present (required for TypedDict compatibility)
@@ -165,7 +166,9 @@ async def create_proxy_server(
                 _stderr = sys.stderr
 
                 async def progress_forwarder(
-                    progress: float, total: float | None, message: str | None,
+                    progress: float,
+                    total: float | None,
+                    message: str | None,
                 ) -> None:
                     # Extract progress token from meta
                     progress_token = meta_dict.get("progressToken") if meta_dict else None
@@ -236,4 +239,3 @@ async def create_proxy_server(
     app.request_handlers[types.CompleteRequest] = _complete
 
     return app
-
