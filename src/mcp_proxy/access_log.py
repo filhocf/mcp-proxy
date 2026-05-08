@@ -67,5 +67,5 @@ class RequestTimer:
         self.start_time = time.perf_counter()
         return self
 
-    def __exit__(self, *_) -> None:
+    def __exit__(self, *_) -> None:  # type: ignore
         self.elapsed_ms = (time.perf_counter() - self.start_time) * 1000
