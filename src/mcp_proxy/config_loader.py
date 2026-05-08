@@ -12,7 +12,6 @@ from typing import Any
 from mcp.client.stdio import StdioServerParameters
 
 from .circuit_breaker import register_circuit_breaker
-from .retry import register_retry_config
 
 logger = logging.getLogger(__name__)
 
@@ -100,7 +99,7 @@ def load_named_server_configs_from_file(
 
         new_env = base_env.copy()
         new_env.update(
-            {k: os.path.expandvars(os.path.expanduser(v)) for k, v in env.items()}
+            {k: os.path.expandvars(str(Path(v).expanduser())) for k, v in env.items()},
         )
 
         named_stdio_params[name] = StdioServerParameters(
@@ -125,8 +124,6 @@ def load_named_server_configs_from_file(
             logger.info("Circuit breaker configured for server '%s'", name)
         if "retry" in server_config:
             extra_cfg["retry"] = server_config["retry"]
-            register_retry_config(name, server_config["retry"])
-            logger.info("Retry configured for server '%s'", name)
         _server_configs[name] = extra_cfg
 
     return named_stdio_params

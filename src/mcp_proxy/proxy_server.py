@@ -3,7 +3,6 @@
 This server is created independent of any transport mechanism.
 """
 
-import asyncio
 import json
 import logging
 import sys
@@ -11,9 +10,6 @@ import typing as t
 
 from mcp import server, types
 from mcp.client.session import ClientSession
-
-from .circuit_breaker import CircuitState, get_circuit_breaker
-from .retry import compute_delay, get_retry_config, is_retryable_error
 
 logger = logging.getLogger(__name__)
 
@@ -34,8 +30,7 @@ def create_roots_forwarding_callback(
 
     async def _forward_roots(_ctx: t.Any) -> types.ListRootsResult | types.ErrorData:  # noqa: ANN401
         try:
-            result = await proxy_app.request_context.session.list_roots()
-            return result
+            return await proxy_app.request_context.session.list_roots()
         except LookupError:
             # request_context not set — no active upstream session
             logger.warning("roots/list requested but no active upstream session available")
@@ -55,8 +50,7 @@ def create_roots_forwarding_callback(
 
 async def create_proxy_server(
     remote_app: ClientSession,
-    server_name: str = "",
-) -> server.Server[object]:  # noqa: C901, PLR0915
+) -> server.Server[object]:
     """Create a server instance from a remote app.
 
     Roots/list requests from the downstream server are forwarded through the proxy
@@ -155,108 +149,70 @@ async def create_proxy_server(
         app.request_handlers[types.ListToolsRequest] = _list_tools
 
         async def _call_tool(req: types.CallToolRequest) -> types.ServerResult:
-            # Circuit breaker check
-            cb = get_circuit_breaker(server_name) if server_name else None
-            if cb and not cb.allow_request():
+            try:
+                # Get request context to access server session for progress forwarding
+                from mcp.server.lowlevel.server import request_ctx  # noqa: PLC0415
+                ctx = request_ctx.get()
+
+                # Convert meta to dict if present (required for TypedDict compatibility)
+                meta_dict = dict(req.params.meta) if req.params.meta else None
+
+                # Create progress forwarder callback
+                # Note: The callback receives individual parameters,
+                # not a ProgressNotificationParams object
+                # Capture sys in closure to avoid scoping issues
+                _stderr = sys.stderr
+
+                async def progress_forwarder(
+                    progress: float, total: float | None, message: str | None,
+                ) -> None:
+                    # Extract progress token from meta
+                    progress_token = meta_dict.get("progressToken") if meta_dict else None
+                    if progress_token is not None:
+                        # Forward progress notification back to parent via server session
+                        await ctx.session.send_progress_notification(
+                            progress_token=progress_token,
+                            progress=progress,
+                            total=total,
+                            message=message,
+                            related_request_id=str(ctx.request_id),
+                        )
+                    else:
+                        print(
+                            "[MCP-PROXY] WARNING: No progressToken in meta,"
+                            " cannot forward progress notification",
+                            file=_stderr,
+                            flush=True,
+                        )
+
+                result = await remote_app.call_tool(
+                    req.params.name,
+                    (req.params.arguments or {}),
+                    meta=meta_dict,
+                    progress_callback=progress_forwarder,
+                )
+                # When the server returns structuredContent but no meaningful text,
+                # add a JSON text fallback so stdio clients can display the result.
+                content_items = result.content or []
+                has_text = any(
+                    isinstance(item, types.TextContent) and (item.text or "").strip()
+                    for item in content_items
+                )
+                if not has_text and result.structuredContent is not None:
+                    fallback_text = json.dumps(result.structuredContent, indent=2)
+                    new_content = list(content_items)
+                    new_content.append(
+                        types.TextContent(type="text", text=fallback_text),
+                    )
+                    result = result.model_copy(update={"content": new_content})
+                return types.ServerResult(result)
+            except Exception as e:  # noqa: BLE001
                 return types.ServerResult(
                     types.CallToolResult(
-                        content=[types.TextContent(
-                            type="text",
-                            text=f"Circuit breaker OPEN for server '{server_name}'. "
-                            f"Server is temporarily unavailable.",
-                        )],
+                        content=[types.TextContent(type="text", text=str(e))],
                         isError=True,
                     ),
                 )
-
-            retry_cfg = get_retry_config(server_name) if server_name else None
-            max_attempts = max(1, retry_cfg.max_attempts) if retry_cfg else 1
-
-            last_exc: Exception | None = None
-            # Setup invariant: compute once before retry loop
-            from mcp.server.lowlevel.server import request_ctx
-            ctx = request_ctx.get()
-            meta_dict = dict(req.params.meta) if req.params.meta else None
-            _stderr = sys.stderr
-
-            async def progress_forwarder(progress: float, total: float | None, message: str | None) -> None:
-                progress_token = meta_dict.get('progressToken') if meta_dict else None
-                if progress_token is not None:
-                    await ctx.session.send_progress_notification(
-                        progress_token=progress_token,
-                        progress=progress,
-                        total=total,
-                        message=message,
-                        related_request_id=str(ctx.request_id),
-                    )
-                else:
-                    print(
-                        "[MCP-PROXY] WARNING: No progressToken in meta, cannot forward progress notification",
-                        file=_stderr,
-                        flush=True,
-                    )
-
-            for attempt in range(max_attempts):
-                try:
-                    result = await remote_app.call_tool(
-                        req.params.name,
-                        (req.params.arguments or {}),
-                        meta=meta_dict,
-                        progress_callback=progress_forwarder,
-                    )
-                    # When the server returns structuredContent but no meaningful text,
-                    # add a JSON text fallback so stdio clients can display the result.
-                    content_items = result.content or []
-                    has_text = any(
-                        isinstance(item, types.TextContent) and (item.text or "").strip()
-                        for item in content_items
-                    )
-                    if not has_text and result.structuredContent is not None:
-                        fallback_text = json.dumps(result.structuredContent, indent=2)
-                        new_content = list(content_items)
-                        new_content.append(
-                            types.TextContent(type="text", text=fallback_text),
-                        )
-                        result = result.model_copy(update={"content": new_content})
-
-                    # Record success for circuit breaker
-                    if cb:
-                        cb.record_success()
-
-                    return types.ServerResult(result)
-                except Exception as e:  # noqa: BLE001
-                    last_exc = e
-                    # Only retry on transient connection errors
-                    if retry_cfg and attempt < max_attempts - 1 and is_retryable_error(e):
-                        delay = compute_delay(attempt, retry_cfg)
-                        logger.warning(
-                            "Retry %d/%d for tool '%s' on server '%s' after %.1fs: %s",
-                            attempt + 1, max_attempts, req.params.name,
-                            server_name, delay, e,
-                        )
-                        await asyncio.sleep(delay)
-                        continue
-
-                    # Record failure for circuit breaker
-                    if cb:
-                        cb.record_failure()
-
-                    return types.ServerResult(
-                        types.CallToolResult(
-                            content=[types.TextContent(type="text", text=str(e))],
-                            isError=True,
-                        ),
-                    )
-
-            # Should not reach here, but safety net
-            if cb:
-                cb.record_failure()
-            return types.ServerResult(
-                types.CallToolResult(
-                    content=[types.TextContent(type="text", text=str(last_exc))],
-                    isError=True,
-                ),
-            )
 
         app.request_handlers[types.CallToolRequest] = _call_tool
 

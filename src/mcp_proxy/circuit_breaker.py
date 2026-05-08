@@ -33,7 +33,14 @@ class CircuitBreaker:
 
     @property
     def state(self) -> CircuitState:
-        """Get current state, transitioning from open to half-open if timeout elapsed."""
+        """Get current state (read-only, no side effects)."""
+        if self._state == CircuitState.OPEN:
+            if time.monotonic() - self._last_failure_time >= self.config.recovery_timeout:
+                return CircuitState.HALF_OPEN
+        return self._state
+
+    def check_state(self) -> CircuitState:
+        """Check and transition state if recovery timeout has elapsed."""
         if self._state == CircuitState.OPEN:
             if time.monotonic() - self._last_failure_time >= self.config.recovery_timeout:
                 self._state = CircuitState.HALF_OPEN
@@ -53,10 +60,10 @@ class CircuitBreaker:
 
     def allow_request(self) -> bool:
         """Check if a request should be allowed through."""
-        state = self.state  # triggers open->half-open transition
-        if state == CircuitState.CLOSED:
+        current = self.check_state()  # triggers open->half-open transition
+        if current == CircuitState.CLOSED:
             return True
-        if state == CircuitState.HALF_OPEN:
+        if current == CircuitState.HALF_OPEN:
             return True
         return False
 
