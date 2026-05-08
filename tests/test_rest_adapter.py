@@ -1,18 +1,16 @@
 """Tests for REST-to-MCP adapter."""
 
 import json
-from unittest.mock import AsyncMock, patch, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
-import httpx
 import pytest
 
 from mcp_proxy.rest_adapter import (
     RestToMcpAdapter,
+    load_spec_from_url,
     parse_openapi_spec,
     tool_to_mcp_schema,
-    load_spec_from_url,
 )
-
 
 SAMPLE_OPENAPI_SPEC = {
     "openapi": "3.0.0",
@@ -104,7 +102,7 @@ SWAGGER2_SPEC = {
 
 
 class TestParseOpenAPISpec:
-    def test_parse_basic_spec(self):
+    def test_parse_basic_spec(self) -> None:
         tools = parse_openapi_spec(SAMPLE_OPENAPI_SPEC)
         assert len(tools) == 4
         names = [t["name"] for t in tools]
@@ -113,7 +111,7 @@ class TestParseOpenAPISpec:
         assert "getPet" in names
         assert "deletePet" in names
 
-    def test_parse_method_and_path(self):
+    def test_parse_method_and_path(self) -> None:
         tools = parse_openapi_spec(SAMPLE_OPENAPI_SPEC)
         tool_map = {t["name"]: t for t in tools}
         assert tool_map["listPets"]["method"] == "GET"
@@ -121,7 +119,7 @@ class TestParseOpenAPISpec:
         assert tool_map["createPet"]["method"] == "POST"
         assert tool_map["deletePet"]["method"] == "DELETE"
 
-    def test_parse_parameters(self):
+    def test_parse_parameters(self) -> None:
         tools = parse_openapi_spec(SAMPLE_OPENAPI_SPEC)
         tool_map = {t["name"]: t for t in tools}
         params = tool_map["listPets"]["parameters"]
@@ -129,14 +127,14 @@ class TestParseOpenAPISpec:
         assert params[0]["name"] == "limit"
         assert params[0]["in"] == "query"
 
-    def test_parse_path_parameters(self):
+    def test_parse_path_parameters(self) -> None:
         tools = parse_openapi_spec(SAMPLE_OPENAPI_SPEC)
         tool_map = {t["name"]: t for t in tools}
         params = tool_map["getPet"]["parameters"]
         assert params[0]["in"] == "path"
         assert params[0]["required"] is True
 
-    def test_parse_request_body(self):
+    def test_parse_request_body(self) -> None:
         tools = parse_openapi_spec(SAMPLE_OPENAPI_SPEC)
         tool_map = {t["name"]: t for t in tools}
         schema = tool_map["createPet"]["request_body_schema"]
@@ -144,12 +142,12 @@ class TestParseOpenAPISpec:
         assert schema["type"] == "object"
         assert "name" in schema["properties"]
 
-    def test_parse_swagger2_body(self):
+    def test_parse_swagger2_body(self) -> None:
         tools = parse_openapi_spec(SWAGGER2_SPEC)
         assert len(tools) == 1
         assert tools[0]["request_body_schema"]["type"] == "object"
 
-    def test_parse_generates_operation_id(self):
+    def test_parse_generates_operation_id(self) -> None:
         spec = {
             "paths": {
                 "/users/{id}": {
@@ -160,16 +158,22 @@ class TestParseOpenAPISpec:
         tools = parse_openapi_spec(spec)
         assert tools[0]["name"] == "get_users_id"
 
-    def test_parse_empty_spec(self):
+    def test_parse_empty_spec(self) -> None:
         tools = parse_openapi_spec({})
         assert tools == []
 
 
 class TestToolToMcpSchema:
-    def test_basic_schema(self):
+    def test_basic_schema(self) -> None:
         tool = {
             "parameters": [
-                {"name": "limit", "in": "query", "required": False, "schema": {"type": "integer"}, "description": "Max"},
+                {
+                    "name": "limit",
+                    "in": "query",
+                    "required": False,
+                    "schema": {"type": "integer"},
+                    "description": "Max",
+                },
             ],
             "request_body_schema": None,
         }
@@ -178,17 +182,23 @@ class TestToolToMcpSchema:
         assert "limit" in schema["properties"]
         assert schema["properties"]["limit"]["type"] == "integer"
 
-    def test_required_params(self):
+    def test_required_params(self) -> None:
         tool = {
             "parameters": [
-                {"name": "id", "in": "path", "required": True, "schema": {"type": "string"}, "description": ""},
+                {
+                    "name": "id",
+                    "in": "path",
+                    "required": True,
+                    "schema": {"type": "string"},
+                    "description": "",
+                },
             ],
             "request_body_schema": None,
         }
         schema = tool_to_mcp_schema(tool)
         assert "id" in schema["required"]
 
-    def test_with_request_body(self):
+    def test_with_request_body(self) -> None:
         tool = {
             "parameters": [],
             "request_body_schema": {"type": "object", "properties": {"name": {"type": "string"}}},
@@ -198,14 +208,14 @@ class TestToolToMcpSchema:
 
 
 class TestRestToMcpAdapter:
-    def test_adapter_tools_list(self):
+    def test_adapter_tools_list(self) -> None:
         adapter = RestToMcpAdapter("https://api.example.com", SAMPLE_OPENAPI_SPEC)
         tools = adapter.tools
         assert len(tools) == 4
         assert all("name" in t and "inputSchema" in t for t in tools)
 
     @pytest.mark.asyncio
-    async def test_call_tool_get(self):
+    async def test_call_tool_get(self) -> None:
         adapter = RestToMcpAdapter("https://api.example.com", SAMPLE_OPENAPI_SPEC)
 
         mock_response = MagicMock()
@@ -219,42 +229,47 @@ class TestRestToMcpAdapter:
         assert result["data"] == [{"id": 1, "name": "Fido"}]
 
     @pytest.mark.asyncio
-    async def test_call_tool_path_param(self):
+    async def test_call_tool_path_param(self) -> None:
         adapter = RestToMcpAdapter("https://api.example.com", SAMPLE_OPENAPI_SPEC)
 
         mock_response = MagicMock()
         mock_response.status_code = 200
         mock_response.json.return_value = {"id": "123", "name": "Rex"}
 
-        with patch("httpx.AsyncClient.request", new_callable=AsyncMock, return_value=mock_response) as mock_req:
-            result = await adapter.call_tool("getPet", {"petId": "123"})
+        with patch(
+            "httpx.AsyncClient.request", new_callable=AsyncMock, return_value=mock_response
+        ) as mock_req:
+            await adapter.call_tool("getPet", {"petId": "123"})
             # Verify path parameter substitution
             call_kwargs = mock_req.call_args
             assert "/pets/123" in call_kwargs.kwargs["url"]
 
     @pytest.mark.asyncio
-    async def test_call_tool_post_with_body(self):
+    async def test_call_tool_post_with_body(self) -> None:
         adapter = RestToMcpAdapter("https://api.example.com", SAMPLE_OPENAPI_SPEC)
 
         mock_response = MagicMock()
         mock_response.status_code = 201
         mock_response.json.return_value = {"id": 1, "name": "Buddy"}
 
-        with patch("httpx.AsyncClient.request", new_callable=AsyncMock, return_value=mock_response) as mock_req:
-            result = await adapter.call_tool("createPet", {"body": {"name": "Buddy", "tag": "dog"}})
+        with patch(
+            "httpx.AsyncClient.request", new_callable=AsyncMock, return_value=mock_response
+        ) as mock_req:
+            await adapter.call_tool("createPet", {"body": {"name": "Buddy", "tag": "dog"}})
             call_kwargs = mock_req.call_args
             assert call_kwargs.kwargs["json"] == {"name": "Buddy", "tag": "dog"}
 
     @pytest.mark.asyncio
-    async def test_call_tool_not_found(self):
+    async def test_call_tool_not_found(self) -> None:
         adapter = RestToMcpAdapter("https://api.example.com", SAMPLE_OPENAPI_SPEC)
         result = await adapter.call_tool("nonexistent", {})
         assert "error" in result
 
     @pytest.mark.asyncio
-    async def test_call_tool_with_extra_headers(self):
+    async def test_call_tool_with_extra_headers(self) -> None:
         adapter = RestToMcpAdapter(
-            "https://api.example.com", SAMPLE_OPENAPI_SPEC,
+            "https://api.example.com",
+            SAMPLE_OPENAPI_SPEC,
             headers={"X-Api-Key": "base-key"},
         )
 
@@ -262,9 +277,12 @@ class TestRestToMcpAdapter:
         mock_response.status_code = 200
         mock_response.json.return_value = []
 
-        with patch("httpx.AsyncClient.request", new_callable=AsyncMock, return_value=mock_response) as mock_req:
+        with patch(
+            "httpx.AsyncClient.request", new_callable=AsyncMock, return_value=mock_response
+        ) as mock_req:
             await adapter.call_tool(
-                "listPets", {},
+                "listPets",
+                {},
                 extra_headers={"Authorization": "Bearer user-token"},
             )
             call_kwargs = mock_req.call_args
@@ -273,7 +291,7 @@ class TestRestToMcpAdapter:
             assert headers["Authorization"] == "Bearer user-token"
 
     @pytest.mark.asyncio
-    async def test_call_tool_text_response(self):
+    async def test_call_tool_text_response(self) -> None:
         adapter = RestToMcpAdapter("https://api.example.com", SAMPLE_OPENAPI_SPEC)
 
         mock_response = MagicMock()
@@ -288,7 +306,7 @@ class TestRestToMcpAdapter:
 
 class TestLoadSpecFromUrl:
     @pytest.mark.asyncio
-    async def test_load_spec(self):
+    async def test_load_spec(self) -> None:
         mock_response = MagicMock()
         mock_response.status_code = 200
         mock_response.json.return_value = SAMPLE_OPENAPI_SPEC

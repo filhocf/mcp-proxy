@@ -3,7 +3,7 @@
 import json
 import logging
 from typing import Any
-from urllib.parse import urljoin, quote
+from urllib.parse import quote
 
 import httpx
 
@@ -31,13 +31,15 @@ def parse_openapi_spec(spec: dict[str, Any]) -> list[dict[str, Any]]:
 
             params = []
             for p in operation.get("parameters", []):
-                params.append({
-                    "name": p["name"],
-                    "in": p.get("in", "query"),
-                    "required": p.get("required", False),
-                    "schema": p.get("schema", {"type": "string"}),
-                    "description": p.get("description", ""),
-                })
+                params.append(
+                    {
+                        "name": p["name"],
+                        "in": p.get("in", "query"),
+                        "required": p.get("required", False),
+                        "schema": p.get("schema", {"type": "string"}),
+                        "description": p.get("description", ""),
+                    }
+                )
 
             # Request body (OpenAPI 3.x)
             request_body_schema = None
@@ -54,14 +56,16 @@ def parse_openapi_spec(spec: dict[str, Any]) -> list[dict[str, Any]]:
                         request_body_schema = p.get("schema")
                         break
 
-            tools.append({
-                "name": operation_id,
-                "description": operation.get("summary", operation.get("description", "")),
-                "method": method.upper(),
-                "path": path,
-                "parameters": params,
-                "request_body_schema": request_body_schema,
-            })
+            tools.append(
+                {
+                    "name": operation_id,
+                    "description": operation.get("summary", operation.get("description", "")),
+                    "method": method.upper(),
+                    "path": path,
+                    "parameters": params,
+                    "request_body_schema": request_body_schema,
+                }
+            )
 
     return tools
 
@@ -106,7 +110,9 @@ class RestToMcpAdapter:
         self._tool_map = {t["name"]: t for t in self._tools}
         self._client = httpx.AsyncClient(headers=self._headers, timeout=30.0)
         logger.info(
-            "REST adapter initialized: %s (%d tools)", base_url, len(self._tools),
+            "REST adapter initialized: %s (%d tools)",
+            base_url,
+            len(self._tools),
         )
 
     @property
@@ -184,6 +190,7 @@ async def load_spec_from_url(url: str, headers: dict[str, str] | None = None) ->
         try:
             resp = await client.get(url, headers=headers or {}, timeout=30.0)
             resp.raise_for_status()
-            return resp.json()
+            return resp.json()  # type: ignore
         except httpx.RequestError as e:
-            raise RuntimeError(f"Failed to fetch OpenAPI spec from {url}: {e}") from e
+            msg = f"Failed to fetch OpenAPI spec from {url}: {e}"
+            raise RuntimeError(msg) from e
