@@ -19,6 +19,7 @@ from starlette.applications import Starlette
 from starlette.middleware import Middleware
 from starlette.middleware.cors import CORSMiddleware
 
+from mcp_proxy.config_loader import ServerConfig
 from mcp_proxy.mcp_server import (
     DEFAULT_EXPOSE_HEADERS,
     MCPServerSettings,
@@ -312,13 +313,13 @@ async def test_run_mcp_server_with_named_servers(
 ) -> None:
     """Test run_mcp_server with named servers configuration."""
     named_servers = {
-        "server1": mock_stdio_params,
-        "server2": StdioServerParameters(
+        "server1": ServerConfig(params=mock_stdio_params),
+        "server2": ServerConfig(params=StdioServerParameters(
             command="python",
             args=["-m", "mcp_server"],
             env={"PYTHON_PATH": "/usr/bin/python"},
             cwd="/home/user",
-        ),
+        )),
     }
 
     with (
@@ -591,7 +592,7 @@ async def test_run_mcp_server_global_status_updates(
     # Clear global status before test
     _global_status["server_instances"].clear()
 
-    named_servers = {"test_server": mock_stdio_params}
+    named_servers = {"test_server": ServerConfig(params=mock_stdio_params)}
 
     with (
         patch("mcp_proxy.mcp_server.stdio_client") as mock_stdio_client,
@@ -635,7 +636,7 @@ async def test_run_mcp_server_sse_url_logging(
     mock_stdio_params: StdioServerParameters,
 ) -> None:
     """Test run_mcp_server logs correct SSE URLs."""
-    named_servers = {"test_server": mock_stdio_params}
+    named_servers = {"test_server": ServerConfig(params=mock_stdio_params)}
 
     with (
         patch("mcp_proxy.mcp_server.stdio_client") as mock_stdio_client,
@@ -698,7 +699,7 @@ async def test_run_mcp_server_both_default_and_named_servers(
     mock_stdio_params: StdioServerParameters,
 ) -> None:
     """Test run_mcp_server with both default and named servers."""
-    named_servers = {"named_server": mock_stdio_params}
+    named_servers = {"named_server": ServerConfig(params=mock_stdio_params)}
 
     with (
         patch("mcp_proxy.mcp_server.stdio_client") as mock_stdio_client,
@@ -752,13 +753,13 @@ async def test_run_mcp_server_named_server_failure_does_not_crash_others(
 ) -> None:
     """Test that a failing named server does not prevent other servers from starting."""
     named_servers = {
-        "good_server": mock_stdio_params,
-        "bad_server": StdioServerParameters(
+        "good_server": ServerConfig(params=mock_stdio_params),
+        "bad_server": ServerConfig(params=StdioServerParameters(
             command="nonexistent_command",
             args=[],
             env={},
             cwd=None,
-        ),
+        )),
     }
 
     call_count = 0
@@ -809,8 +810,8 @@ async def test_run_mcp_server_all_named_servers_fail_no_default(
 ) -> None:
     """Test that proxy exits gracefully when all named servers fail and no default is set."""
     named_servers = {
-        "bad1": StdioServerParameters(command="bad1", args=[], env={}, cwd=None),
-        "bad2": StdioServerParameters(command="bad2", args=[], env={}, cwd=None),
+        "bad1": ServerConfig(params=StdioServerParameters(command="bad1", args=[], env={}, cwd=None)),
+        "bad2": ServerConfig(params=StdioServerParameters(command="bad2", args=[], env={}, cwd=None)),
     }
 
     with (

@@ -21,6 +21,7 @@ from starlette.responses import JSONResponse, Response
 from starlette.routing import BaseRoute, Mount, Route
 from starlette.types import Receive, Scope, Send
 
+from .config_loader import ServerConfig
 from .proxy_server import create_proxy_server
 
 logger = logging.getLogger(__name__)
@@ -212,7 +213,7 @@ def create_single_instance_routes(
 async def run_mcp_server(
     mcp_settings: MCPServerSettings,
     default_server_params: StdioServerParameters | None = None,
-    named_server_params: dict[str, StdioServerParameters] | None = None,
+    named_server_params: dict[str, ServerConfig] | None = None,
 ) -> None:
     """Run stdio client(s) and expose an MCP server with multiple possible backends."""
     if named_server_params is None:
@@ -256,7 +257,25 @@ async def run_mcp_server(
 
         # Setup named servers
         failed_servers: list[str] = []
-        for name, params in named_server_params.items():
+        lazy_servers: list[str] = []
+        for name, server_config in named_server_params.items():
+            params = server_config.params
+
+            # Lazy servers: register placeholder, connect on first request
+            if server_config.connection == "lazy":
+                logger.info(
+                    "Registered lazy server '%s': %s %s (will connect on first request)",
+                    name,
+                    params.command,
+                    " ".join(params.args),
+                )
+                _global_status["server_instances"][name] = {
+                    "status": "lazy",
+                    "command": params.command,
+                }
+                lazy_servers.append(name)
+                continue
+
             try:
                 logger.info(
                     "Setting up named server '%s': %s %s",

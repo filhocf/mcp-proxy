@@ -6,6 +6,7 @@ This module provides functionality to load named server configurations from JSON
 import json
 import logging
 import os
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from mcp.client.stdio import StdioServerParameters
@@ -13,10 +14,18 @@ from mcp.client.stdio import StdioServerParameters
 logger = logging.getLogger(__name__)
 
 
+@dataclass
+class ServerConfig:
+    """Extended server configuration with connection mode."""
+
+    params: StdioServerParameters
+    connection: str = "eager"  # "eager" (connect on startup) or "lazy" (connect on first call)
+
+
 def load_named_server_configs_from_file(
     config_file_path: str | Path,
     base_env: dict[str, str],
-) -> dict[str, StdioServerParameters]:
+) -> dict[str, ServerConfig]:
     """Loads named server configurations from a JSON file.
 
     Args:
@@ -31,7 +40,7 @@ def load_named_server_configs_from_file(
         json.JSONDecodeError: If the config file contains invalid JSON.
         ValueError: If the config file format is invalid.
     """
-    named_stdio_params: dict[str, StdioServerParameters] = {}
+    named_stdio_params: dict[str, ServerConfig] = {}
     logger.info("Loading named server configurations from: %s", config_file_path)
 
     try:
@@ -90,11 +99,23 @@ def load_named_server_configs_from_file(
             {k: os.path.expandvars(str(Path(v).expanduser())) for k, v in env.items()},
         )
 
-        named_stdio_params[name] = StdioServerParameters(
-            command=command,
-            args=command_args,
-            env=new_env,
-            cwd=None,
+        connection = server_config.get("connection", "eager")
+        if connection not in ("eager", "lazy"):
+            logger.warning(
+                "Named server '%s' has invalid connection mode '%s', defaulting to 'eager'.",
+                name,
+                connection,
+            )
+            connection = "eager"
+
+        named_stdio_params[name] = ServerConfig(
+            params=StdioServerParameters(
+                command=command,
+                args=command_args,
+                env=new_env,
+                cwd=None,
+            ),
+            connection=connection,
         )
         logger.info(
             "Configured named server '%s' from config: %s %s",
