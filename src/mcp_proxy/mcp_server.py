@@ -1,16 +1,10 @@
 """Create a local SSE server that proxies requests to a stdio MCP server."""
 
 import contextlib
-import fnmatch
-import json
 import logging
-import os
-import re
-import time
 from collections.abc import AsyncIterator, Awaitable, Callable
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from pathlib import Path
 from typing import Any, Final, Literal
 
 import uvicorn
@@ -34,80 +28,21 @@ logger = logging.getLogger(__name__)
 # Paths that bypass API key authentication
 _PUBLIC_PATHS: Final[frozenset[str]] = frozenset({"/health", "/status"})
 
-# Regex to extract server name from path: /servers/<name>/...
-_SERVER_PATH_RE: Final[re.Pattern[str]] = re.compile(r"^/servers/([^/]+)/")
-
-
-@dataclass
-class APIKeyEntry:
-    """Represents a single API key with its permissions."""
-
-    key: str
-    name: str
-    role: str = "user"
-    allowed_servers: list[str] = field(default_factory=lambda: ["*"])
-    allowed_tools: list[str] = field(default_factory=lambda: ["*"])
-    denied_tools: list[str] = field(default_factory=list)
-
-    def is_tool_allowed(self, tool_name: str) -> bool:
-        """Check if a tool is allowed for this key. denied_tools takes precedence."""
-        # Check denied first (takes precedence)
-        for pattern in self.denied_tools:
-            if fnmatch.fnmatch(tool_name, pattern):
-                return False
-        # Check allowed
-        for pattern in self.allowed_tools:
-            if pattern == "*" or fnmatch.fnmatch(tool_name, pattern):
-                return True
-        return False
-
-
-def load_api_keys_config(config_path: str | Path) -> list[APIKeyEntry]:
-    """Load API keys configuration from a JSON file."""
-    with Path(config_path).open() as f:
-        data = json.load(f)
-    entries = []
-    for item in data.get("api_keys", []):
-        entries.append(
-            APIKeyEntry(
-                key=item["key"],
-                name=item["name"],
-                role=item.get("role", "user"),
-                allowed_servers=item.get("allowed_servers", ["*"]),
-                allowed_tools=item.get("allowed_tools", ["*"]),
-                denied_tools=item.get("denied_tools", []),
-            )
-        )
-    return entries
-
 
 class APIKeyMiddleware:
     """Starlette middleware that validates Bearer token authentication.
 
-    Supports single key (backward compatible) or multi-key with per-key permissions.
     Skips validation for health/status endpoints and CORS preflight requests.
+    When no api_key is configured, all requests pass through (backward compatible).
     """
 
-    def __init__(
-        self,
-        app: Any,
-        *,
-        api_key: str | None = None,
-        api_keys: list[APIKeyEntry] | None = None,
-    ) -> None:
+    def __init__(self, app: Any, *, api_key: str) -> None:  # noqa: ANN401
+        """Initialize middleware with ASGI app and API key."""
         self._app = app
-        # Build lookup: token -> APIKeyEntry
-        self._keys: dict[str, APIKeyEntry] = {}
-        if api_keys:
-            for entry in api_keys:
-                self._keys[entry.key] = entry
-        elif api_key:
-            # Backward compatible: single key gets admin access
-            self._keys[api_key] = APIKeyEntry(
-                key=api_key, name="default", role="admin", allowed_servers=["*"]
-            )
+        self._api_key = api_key
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        """Validate API key on HTTP requests."""
         if scope["type"] != "http":
             await self._app(scope, receive, send)
             return
@@ -124,329 +59,17 @@ class APIKeyMiddleware:
         headers = dict(scope.get("headers", []))
         auth_value = headers.get(b"authorization", b"").decode()
 
-        token = ""
-        if auth_value.startswith("Bearer "):
-            token = auth_value[7:]
-
-        entry = self._keys.get(token)
-        if not entry:
-            response = JSONResponse(
-                {"error": "Unauthorized", "message": "Invalid or missing API key"},
-                status_code=401,
-                headers={"WWW-Authenticate": "Bearer"},
-            )
-            await response(scope, receive, send)
-            return
-
-        # Check server access permission
-        server_name = self._extract_server_name(path)
-        if server_name and not self._has_server_access(entry, server_name):
-            response = JSONResponse(
-                {
-                    "error": "Forbidden",
-                    "message": f"API key '{entry.name}' does not have access to server '{server_name}'",
-                },
-                status_code=403,
-            )
-            await response(scope, receive, send)
-            return
-
-        # Store the key entry in scope state for downstream use (RBAC, audit)
-        scope.setdefault("state", {})
-        scope["state"]["api_key_entry"] = entry
-
-        await self._app(scope, receive, send)
-
-    @staticmethod
-    def _extract_server_name(path: str) -> str | None:
-        """Extract server name from path like /servers/<name>/..."""
-        match = _SERVER_PATH_RE.match(path)
-        if match:
-            return match.group(1)
-        # Root paths (/sse, /mcp, /messages/) are the default server
-        if path.startswith(("/sse", "/mcp", "/messages/")):
-            return "default"
-        return None
-
-    @staticmethod
-    def _has_server_access(entry: APIKeyEntry, server_name: str) -> bool:
-        """Check if an API key entry has access to a given server."""
-        for pattern in entry.allowed_servers:
-            if pattern == "*" or fnmatch.fnmatch(server_name, pattern):
-                return True
-        return False
-
-
-class RBACToolMiddleware:
-    """Middleware that intercepts JSON-RPC tools/call and checks tool permissions.
-
-    Must be placed after APIKeyMiddleware (which stores api_key_entry in scope state).
-    """
-
-    def __init__(self, app: Any) -> None:
-        self._app = app
-
-    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
-        if scope["type"] != "http":
+        if auth_value == f"Bearer {self._api_key}":
             await self._app(scope, receive, send)
             return
 
-        method = scope.get("method", "")
-        if method != "POST":
-            await self._app(scope, receive, send)
-            return
-
-        # Get the API key entry from scope state (set by APIKeyMiddleware)
-        state = scope.get("state", {})
-        entry: APIKeyEntry | None = state.get("api_key_entry")
-        if not entry:
-            # No auth context — let it pass (auth middleware handles rejection)
-            await self._app(scope, receive, send)
-            return
-
-        # If key has wildcard allowed and no denied, skip body parsing
-        if "*" in entry.allowed_tools and not entry.denied_tools:
-            await self._app(scope, receive, send)
-            return
-
-        # Buffer the body to inspect JSON-RPC method
-        body_parts: list[bytes] = []
-        body_complete = False
-
-        async def buffering_receive() -> dict:
-            nonlocal body_complete
-            msg = await receive()
-            if msg["type"] == "http.request":
-                body_parts.append(msg.get("body", b""))
-                body_complete = not msg.get("more_body", False)
-            return msg
-
-        # Read the full body
-        while not body_complete:
-            await buffering_receive()
-
-        full_body = b"".join(body_parts)
-
-        # Try to parse as JSON-RPC and check for tools/call
-        tool_name = self._extract_tool_name(full_body)
-        if tool_name and not entry.is_tool_allowed(tool_name):
-            response = JSONResponse(
-                {
-                    "jsonrpc": "2.0",
-                    "error": {
-                        "code": -32600,
-                        "message": f"Forbidden: tool '{tool_name}' is not allowed for key '{entry.name}'",
-                    },
-                    "id": self._extract_request_id(full_body),
-                },
-                status_code=403,
-            )
-            await response(scope, receive, send)
-            return
-
-        # Replay the buffered body
-        body_sent = False
-
-        async def replay_receive() -> dict:
-            nonlocal body_sent
-            if not body_sent:
-                body_sent = True
-                return {"type": "http.request", "body": full_body, "more_body": False}
-            return await receive()
-
-        await self._app(scope, replay_receive, send)
-
-    @staticmethod
-    def _extract_tool_name(body: bytes) -> str | None:
-        """Extract tool name from a JSON-RPC tools/call request."""
-        try:
-            data = json.loads(body)
-            if isinstance(data, dict) and data.get("method") == "tools/call":
-                params = data.get("params", {})
-                return params.get("name")
-        except (json.JSONDecodeError, TypeError):
-            pass
-        return None
-
-    @staticmethod
-    def _extract_request_id(body: bytes) -> Any:
-        """Extract the JSON-RPC request id."""
-        try:
-            data = json.loads(body)
-            if isinstance(data, dict):
-                return data.get("id")
-        except (json.JSONDecodeError, TypeError):
-            pass
-        return None
-
-
-class AuditLogger:
-    """Append-only JSONL audit logger with rotating file handler."""
-
-    _instance_count: int = 0
-
-    def __init__(self, log_path: str | Path, max_bytes: int = 10 * 1024 * 1024, backup_count: int = 5) -> None:
-        from logging.handlers import RotatingFileHandler
-
-        self._path = Path(log_path)
-        self._path.parent.mkdir(parents=True, exist_ok=True)
-
-        AuditLogger._instance_count += 1
-        logger_name = f"mcp_proxy.audit.{AuditLogger._instance_count}"
-        self._logger = logging.getLogger(logger_name)
-        self._logger.setLevel(logging.INFO)
-        self._logger.propagate = False
-
-        # Remove existing handlers to avoid duplicates
-        self._logger.handlers.clear()
-        handler = RotatingFileHandler(
-            str(self._path), maxBytes=max_bytes, backupCount=backup_count
+        # Reject
+        response = JSONResponse(
+            {"error": "Unauthorized", "message": "Invalid or missing API key"},
+            status_code=401,
+            headers={"WWW-Authenticate": "Bearer"},
         )
-        handler.setFormatter(logging.Formatter("%(message)s"))
-        self._logger.addHandler(handler)
-
-    def log(
-        self,
-        *,
-        api_key_name: str,
-        server: str,
-        tool: str,
-        args_summary: str,
-        result_status: str,
-        latency_ms: float,
-    ) -> None:
-        """Write a single audit entry."""
-        entry = {
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-            "api_key_name": api_key_name,
-            "server": server,
-            "tool": tool,
-            "args_summary": args_summary[:200],
-            "result_status": result_status,
-            "latency_ms": round(latency_ms, 2),
-        }
-        self._logger.info(json.dumps(entry, separators=(",", ":")))
-
-
-class AuditLogMiddleware:
-    """Middleware that logs tool calls to an audit JSONL file.
-
-    Must be placed after APIKeyMiddleware (which stores api_key_entry in scope state).
-    """
-
-    def __init__(self, app: Any, *, audit_logger: AuditLogger) -> None:
-        self._app = app
-        self._audit = audit_logger
-
-    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
-        if scope["type"] != "http" or scope.get("method", "") != "POST":
-            await self._app(scope, receive, send)
-            return
-
-        # Buffer the request body
-        body_parts: list[bytes] = []
-        body_complete = False
-        body_size = 0
-        max_body_size = 1 * 1024 * 1024  # 1MB
-
-        async def buffering_receive() -> dict:
-            nonlocal body_complete, body_size
-            msg = await receive()
-            if msg["type"] == "http.request":
-                chunk = msg.get("body", b"")
-                body_size += len(chunk)
-                if body_size > max_body_size:
-                    body_complete = True
-                    return msg
-                body_parts.append(chunk)
-                body_complete = not msg.get("more_body", False)
-            return msg
-
-        while not body_complete:
-            await buffering_receive()
-
-        if body_size > max_body_size:
-            await self._app(scope, receive, send)
-            return
-
-        full_body = b"".join(body_parts)
-
-        # Check if this is a tools/call request
-        tool_name = None
-        args_summary = ""
-        try:
-            data = json.loads(full_body)
-            if isinstance(data, dict) and data.get("method") == "tools/call":
-                params = data.get("params", {})
-                tool_name = params.get("name", "")
-                args = params.get("arguments", {})
-                args_summary = json.dumps(args, separators=(",", ":"))[:200]
-                # Sanitize secrets from args_summary
-                args_summary = re.sub(r'(password|token|key|secret|credential)(=|":?)[^,}"]*', r'\1\2[REDACTED]', args_summary, flags=re.IGNORECASE)
-        except (json.JSONDecodeError, TypeError):
-            pass
-
-        if not tool_name:
-            # Not a tool call, pass through without auditing
-            body_sent = False
-
-            async def replay_receive_passthrough() -> dict:
-                nonlocal body_sent
-                if not body_sent:
-                    body_sent = True
-                    return {"type": "http.request", "body": full_body, "more_body": False}
-                return await receive()
-
-            await self._app(scope, replay_receive_passthrough, send)
-            return
-
-        # Extract context
-        state = scope.get("state", {})
-        entry: APIKeyEntry | None = state.get("api_key_entry")
-        api_key_name = entry.name if entry else "anonymous"
-        server_name = APIKeyMiddleware._extract_server_name(scope.get("path", "")) or "unknown"
-
-        # Capture response status
-        response_status = "unknown"
-        start_time = time.perf_counter()
-
-        async def auditing_send(message: dict) -> None:
-            nonlocal response_status
-            if message["type"] == "http.response.start":
-                status_code = message.get("status", 0)
-                if status_code < 400:
-                    response_status = "success"
-                elif status_code == 403:
-                    response_status = "forbidden"
-                else:
-                    response_status = "error"
-            await send(message)
-
-        # Replay body
-        body_sent = False
-
-        async def replay_receive() -> dict:
-            nonlocal body_sent
-            if not body_sent:
-                body_sent = True
-                return {"type": "http.request", "body": full_body, "more_body": False}
-            return await receive()
-
-        try:
-            await self._app(scope, replay_receive, auditing_send)
-        except Exception:
-            response_status = "error"
-            raise
-        finally:
-            latency_ms = (time.perf_counter() - start_time) * 1000
-            self._audit.log(
-                api_key_name=api_key_name,
-                server=server_name,
-                tool=tool_name,
-                args_summary=args_summary,
-                result_status=response_status,
-                latency_ms=latency_ms,
-            )
+        await response(scope, receive, send)
 
 DEFAULT_EXPOSE_HEADERS: Final[tuple[str, ...]] = ("mcp-session-id",)
 
@@ -466,7 +89,6 @@ class MCPServerSettings:
     expose_headers: list[str] = field(default_factory=_default_expose_headers)
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = "INFO"
     api_key: str | None = None
-    api_keys: list[APIKeyEntry] | None = None
 
 
 # To store last activity for multiple servers if needed, though status endpoint is global for now.
@@ -701,30 +323,10 @@ async def run_mcp_server(
                 ),
             )
 
-        # Audit log middleware (wraps RBAC to capture rejections)
-        audit_log_path = os.getenv(
-            "MCP_PROXY_AUDIT_LOG",
-            os.path.expanduser("~/dtp/ai-configs/mcp-proxy/logs/audit.jsonl"),
-        )
-        audit_logger: AuditLogger | None = None
-        if audit_log_path:
-            audit_logger = AuditLogger(audit_log_path)
-            logger.info("Audit logging enabled: %s", audit_log_path)
-
-        if mcp_settings.api_keys:
-            middleware.append(
-                Middleware(APIKeyMiddleware, api_keys=mcp_settings.api_keys),
-            )
-            if audit_logger:
-                middleware.append(Middleware(AuditLogMiddleware, audit_logger=audit_logger))
-            middleware.append(Middleware(RBACToolMiddleware))
-            logger.info("Multi API key authentication enabled (%d keys)", len(mcp_settings.api_keys))
-        elif mcp_settings.api_key:
+        if mcp_settings.api_key:
             middleware.append(
                 Middleware(APIKeyMiddleware, api_key=mcp_settings.api_key),
             )
-            if audit_logger:
-                middleware.append(Middleware(AuditLogMiddleware, audit_logger=audit_logger))
             logger.info("API key authentication enabled")
 
         starlette_app = Starlette(
