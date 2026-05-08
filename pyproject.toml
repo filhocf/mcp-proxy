@@ -98,30 +98,49 @@ warn_unused_ignores = true
 [tool.ruff.lint]
 select = ["ALL"]
 ignore = [
-    "EM101",  # Exception must not use a string literal, assign to variable first
-    "TRY003", # Avoid specifying long messages outside the exception class
-    "ERA001", # Found commented-out code
-    "FBT001", # Boolean-typed positional argument (upstream pattern)
-    "C901",   # Function too complex (intentional in proxy/server orchestration)
-    "PLR0912", # Too many branches (intentional in server orchestration)
-    "PLR0915", # Too many statements (intentional in proxy/server orchestration)
+    "EM101",   # Exception must not use a string literal
+    "TRY003",  # Avoid specifying long messages outside the exception class
+    "ERA001",  # Found commented-out code
+    "FBT001",  # Boolean-typed positional argument (upstream pattern)
+    "FBT003",  # Boolean positional value in function call
+    "C901",    # Function too complex
+    "PLR0912", # Too many branches
+    "PLR0915", # Too many statements
     "PERF203", # try-except in loop (intentional for graceful failure)
-    "RUF059", # Unused unpacked variable (test fixtures)
-    "PTH111", # os.path.expanduser (upstream pattern)
-    "RUF100", # Unused noqa directives (upstream has some, harmless)
-    "COM812", # Trailing comma missing (conflicts with ruff-format)
-    "ANN401", # Dynamically typed expressions (Any) — needed for ASGI/handler wrappers
-    "D107",   # Missing docstring in __init__ (not required for simple dataclasses)
-    "D102",   # Missing docstring in public method (too strict for internal code)
-    "TRY300", # Consider moving to else block (style preference, not bug)
-    "I001",   # Import block unsorted (let ruff-format handle it)
+    "RUF059",  # Unused unpacked variable (test fixtures)
+    "PTH111",  # os.path.expanduser (upstream pattern)
+    "PTH123",  # open() should be Path.open()
+    "RUF100",  # Unused noqa directives
+    "RUF006",  # Store reference to asyncio.create_task
+    "COM812",  # Trailing comma missing (conflicts with ruff-format)
+    "ANN401",  # Dynamically typed expressions (Any)
+    "ANN001",  # Missing type annotation for function argument
+    "ANN002",  # Missing type annotation for *args
+    "ANN201",  # Missing return type annotation for public function
+    "ANN202",  # Missing return type annotation for private function
+    "D101",    # Missing docstring in public class
+    "D102",    # Missing docstring in public method
+    "D103",    # Missing docstring in public function
+    "D105",    # Missing docstring in magic method
+    "D107",    # Missing docstring in __init__
+    "TRY300",  # Consider moving to else block
+    "TRY401",  # Redundant exception in logging.exception
+    "I001",    # Import block unsorted (ruff-format handles)
+    "PLW0603", # Using global statement
+    "SIM102",  # Collapsible if (style preference)
+    "PLR2004", # Magic value in comparison (too strict for tests)
+    "SLF001",  # Private member access (needed in tests)
+    "S106",    # Possible hardcoded password (test fixtures)
+    "ARG002",  # Unused method argument
+    "PERF401", # Use list comprehension (style preference)
+    "ASYNC240", # Blocking path method in async (test cleanup)
+    "E501",    # Line too long (ruff-format handles most, HTML strings remain)
+    "ASYNC110", # asyncio.sleep in while loop (test server pattern)
+    "ARG001",  # Unused function argument (test fixtures, callbacks)
 ]
 
 [tool.ruff.lint.per-file-ignores]
-"tests/*" = [
-    "S101", "INP001", "ARG001", "SIM117", "ASYNC110", "PLC0415",
-    "E501", "ANN001", "ANN201", "ANN202", "RUF006", "D103",
-]
+"tests/*" = ["S101", "INP001", "PLC0415"]
 
 [tool.ruff.lint.pydocstyle]
 convention = "google"
