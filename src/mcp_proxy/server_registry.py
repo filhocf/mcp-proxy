@@ -47,10 +47,7 @@ class ServerRegistry:
 
     def list_servers(self) -> list[dict[str, Any]]:
         """List all registered servers."""
-        return [
-            {"name": name, **config}
-            for name, config in self._servers.items()
-        ]
+        return [{"name": name, **config} for name, config in self._servers.items()]
 
     def _to_stdio_params(self, name: str, config: dict[str, Any]) -> StdioServerParameters:
         return StdioServerParameters(

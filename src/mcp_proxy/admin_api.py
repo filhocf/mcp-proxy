@@ -21,7 +21,8 @@ def _check_admin_auth(request: Request, api_key: str | None) -> JSONResponse | N
     token = auth.removeprefix("Bearer ")
     if not auth.startswith("Bearer ") or not secrets.compare_digest(token, api_key):
         return JSONResponse(
-            {"error": "Unauthorized"}, status_code=401,
+            {"error": "Unauthorized"},
+            status_code=401,
             headers={"WWW-Authenticate": "Bearer"},
         )
     return None
@@ -30,8 +31,8 @@ def _check_admin_auth(request: Request, api_key: str | None) -> JSONResponse | N
 def create_admin_routes(
     registry: ServerRegistry,
     api_key: str | None = None,
-    on_register: "callable | None" = None,
-    on_unregister: "callable | None" = None,
+    on_register: "callable | None" = None,  # type: ignore
+    on_unregister: "callable | None" = None,  # type: ignore
 ) -> list[Route]:
     """Create admin API routes for server management.
 
@@ -64,13 +65,14 @@ def create_admin_routes(
 
         if on_register:
             try:
-                await on_register(name, params)
+                await on_register(name, params)  # type: ignore
             except Exception as e:
                 # Rollback registration on failure
-                registry.unregister(name)
+                registry.unregister(name)  # type: ignore
                 logger.exception("Failed to start server '%s'", name)
                 return JSONResponse(
-                    {"error": f"Failed to start server: {e}"}, status_code=500,
+                    {"error": f"Failed to start server: {e}"},
+                    status_code=500,
                 )
 
         return JSONResponse({"status": "registered", "name": name}, status_code=201)
@@ -86,7 +88,7 @@ def create_admin_routes(
 
         if on_unregister:
             try:
-                await on_unregister(name)
+                await on_unregister(name)  # type: ignore
             except Exception:
                 logger.exception("Error during cleanup for server '%s'", name)
 
