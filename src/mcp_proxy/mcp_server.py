@@ -75,6 +75,7 @@ class APIKeyMiddleware:
         )
         await response(scope, receive, send)
 
+
 DEFAULT_EXPOSE_HEADERS: Final[tuple[str, ...]] = ("mcp-session-id",)
 
 
