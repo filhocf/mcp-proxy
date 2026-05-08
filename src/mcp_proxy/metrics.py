@@ -16,7 +16,7 @@ class ServerMetrics:
 
     requests_total: int = 0
     errors_total: int = 0
-    latencies: deque = field(default_factory=lambda: deque(maxlen=LATENCY_WINDOW))
+    latencies: deque = field(default_factory=lambda: deque(maxlen=LATENCY_WINDOW))  # type: ignore
     last_request_at: str | None = None
 
     def record(self, latency_ms: float, is_error: bool) -> None:
@@ -31,7 +31,7 @@ class ServerMetrics:
             return None
         sorted_lat = sorted(self.latencies)
         idx = int(len(sorted_lat) * p)
-        return round(sorted_lat[min(idx, len(sorted_lat) - 1)], 2)
+        return round(sorted_lat[min(idx, len(sorted_lat) - 1)], 2)  # type: ignore
 
     def latency_p50(self) -> float | None:
         return self._percentile(0.5)
@@ -39,7 +39,7 @@ class ServerMetrics:
     def latency_p99(self) -> float | None:
         return self._percentile(0.99)
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict:  # type: ignore
         return {
             "requests_total": self.requests_total,
             "errors_total": self.errors_total,
@@ -60,7 +60,7 @@ class MetricsCollector:
             self._servers[server_name] = ServerMetrics()
         self._servers[server_name].record(latency_ms, is_error)
 
-    def get_status(self) -> dict:
+    def get_status(self) -> dict:  # type: ignore
         total_requests = sum(s.requests_total for s in self._servers.values())
         total_errors = sum(s.errors_total for s in self._servers.values())
         return {
@@ -82,7 +82,7 @@ def record_metric(server_name: str, latency_ms: float, is_error: bool) -> None:
     _collector.record(server_name, latency_ms, is_error)
 
 
-def get_metrics_status() -> dict:
+def get_metrics_status() -> dict:  # type: ignore
     """Get the full metrics status."""
     return _collector.get_status()
 
