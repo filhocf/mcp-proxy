@@ -36,7 +36,7 @@ def test_server() -> Server[object]:
                 name="echo",
                 description="Echo tool",
                 inputSchema={"type": "object", "properties": {"msg": {"type": "string"}}},
-            )
+            ),
         ]
 
     @srv.call_tool()  # type: ignore[misc]
@@ -128,7 +128,7 @@ async def test_callback_forwards_roots_successfully(monkeypatch: pytest.MonkeyPa
     expected_roots = types.ListRootsResult(
         roots=[
             types.Root(uri="file:///project", name="project"),
-        ]
+        ],
     )
 
     mock_session = MagicMock()
