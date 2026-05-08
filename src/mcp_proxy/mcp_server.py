@@ -40,11 +40,13 @@ class APIKeyMiddleware:
     When no api_key is configured, all requests pass through (backward compatible).
     """
 
-    def __init__(self, app: Any, *, api_key: str) -> None:
+    def __init__(self, app: Any, *, api_key: str) -> None:  # noqa: ANN401
+        """Initialize middleware with ASGI app and API key."""
         self._app = app
         self._api_key = api_key
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        """Validate API key on HTTP requests."""
         if scope["type"] != "http":
             await self._app(scope, receive, send)
             return
