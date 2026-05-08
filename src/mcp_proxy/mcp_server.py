@@ -286,12 +286,18 @@ async def run_mcp_server(
                         max_wait_seconds=server_config.max_wait_seconds,
                     )
                     original_handler = proxy_named.request_handlers[mcp_types.CallToolRequest]
-                    proxy_named.request_handlers[mcp_types.CallToolRequest] = create_rate_limited_call_tool(
-                        original_handler, rate_limiter, name,
+                    proxy_named.request_handlers[mcp_types.CallToolRequest] = (
+                        create_rate_limited_call_tool(
+                            original_handler,
+                            rate_limiter,
+                            name,
+                        )
                     )
                     logger.info(
                         "Rate limiting enabled for '%s': max_concurrent=%d, max_wait=%.1fs",
-                        name, server_config.max_concurrent, server_config.max_wait_seconds,
+                        name,
+                        server_config.max_concurrent,
+                        server_config.max_wait_seconds,
                     )
 
                 instance_routes_named, http_manager_named = create_single_instance_routes(

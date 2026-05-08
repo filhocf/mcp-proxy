@@ -519,8 +519,7 @@ def main() -> None:
         )
         # Wrap CLI-defined servers in ServerConfig (no rate limiting config from CLI)
         named_server_configs = {
-            name: ServerConfig(stdio_params=params)
-            for name, params in named_stdio_params.items()
+            name: ServerConfig(stdio_params=params) for name, params in named_stdio_params.items()
         }
 
     # Ensure at least one server is configured

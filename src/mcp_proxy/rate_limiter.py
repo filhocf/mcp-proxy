@@ -14,7 +14,11 @@ DEFAULT_MAX_WAIT_SECONDS = 30.0
 class ServerRateLimiter:
     """Limits concurrent requests to a server using asyncio.Semaphore."""
 
-    def __init__(self, max_concurrent: int = DEFAULT_MAX_CONCURRENT, max_wait_seconds: float = DEFAULT_MAX_WAIT_SECONDS) -> None:
+    def __init__(
+        self,
+        max_concurrent: int = DEFAULT_MAX_CONCURRENT,
+        max_wait_seconds: float = DEFAULT_MAX_WAIT_SECONDS,
+    ) -> None:
         if max_concurrent < 1:
             raise ValueError("max_concurrent must be >= 1")
         if max_wait_seconds <= 0:
@@ -40,16 +44,27 @@ class ServerRateLimiter:
         self._semaphore.release()
 
 
-def create_rate_limited_call_tool(original_handler, rate_limiter: ServerRateLimiter, server_name: str):
+def create_rate_limited_call_tool(
+    original_handler, rate_limiter: ServerRateLimiter, server_name: str
+):
     """Wrap a call_tool handler with rate limiting."""
 
     async def _rate_limited_call_tool(req: types.CallToolRequest) -> types.ServerResult:
         acquired = await rate_limiter.acquire()
         if not acquired:
-            logger.warning("Rate limit exceeded for server '%s' (max_concurrent=%d)", server_name, rate_limiter.max_concurrent)
+            logger.warning(
+                "Rate limit exceeded for server '%s' (max_concurrent=%d)",
+                server_name,
+                rate_limiter.max_concurrent,
+            )
             return types.ServerResult(
                 types.CallToolResult(
-                    content=[types.TextContent(type="text", text=f"Rate limit exceeded: server '{server_name}' has too many concurrent requests. Try again later.")],
+                    content=[
+                        types.TextContent(
+                            type="text",
+                            text=f"Rate limit exceeded: server '{server_name}' has too many concurrent requests. Try again later.",
+                        )
+                    ],
                     isError=True,
                 ),
             )

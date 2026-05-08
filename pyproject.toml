@@ -103,16 +103,25 @@ ignore = [
     "ERA001", # Found commented-out code
     "FBT001", # Boolean-typed positional argument (upstream pattern)
     "C901",   # Function too complex (intentional in proxy/server orchestration)
+    "PLR0912", # Too many branches (intentional in server orchestration)
     "PLR0915", # Too many statements (intentional in proxy/server orchestration)
     "PERF203", # try-except in loop (intentional for graceful failure)
     "RUF059", # Unused unpacked variable (test fixtures)
     "PTH111", # os.path.expanduser (upstream pattern)
     "RUF100", # Unused noqa directives (upstream has some, harmless)
     "COM812", # Trailing comma missing (conflicts with ruff-format)
+    "ANN401", # Dynamically typed expressions (Any) — needed for ASGI/handler wrappers
+    "D107",   # Missing docstring in __init__ (not required for simple dataclasses)
+    "D102",   # Missing docstring in public method (too strict for internal code)
+    "TRY300", # Consider moving to else block (style preference, not bug)
+    "I001",   # Import block unsorted (let ruff-format handle it)
 ]
 
 [tool.ruff.lint.per-file-ignores]
-"tests/*" = ["S101", "INP001", "ARG001", "SIM117", "ASYNC110", "PLC0415", "E501", "ANN401"]
+"tests/*" = [
+    "S101", "INP001", "ARG001", "SIM117", "ASYNC110", "PLC0415",
+    "E501", "ANN001", "ANN201", "ANN202", "RUF006", "D103",
+]
 
 [tool.ruff.lint.pydocstyle]
 convention = "google"
