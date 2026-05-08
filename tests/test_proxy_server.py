@@ -560,9 +560,7 @@ async def test_call_tool_structured_content_fallback(
         call_tool_result = await session.call_tool("tool", {})
         assert not call_tool_result.isError
         assert len(call_tool_result.content) > 0
-        text_items = [
-            c for c in call_tool_result.content if isinstance(c, types.TextContent)
-        ]
+        text_items = [c for c in call_tool_result.content if isinstance(c, types.TextContent)]
         assert len(text_items) > 0
         assert "value" in text_items[0].text
         assert "42" in text_items[0].text
@@ -656,7 +654,9 @@ async def test_call_tool_with_empty_meta_parameter(
 
         # Call the tool with None meta parameter
         call_tool_result = await session.call_tool(
-            "tool", {"input1": "test-value"}, meta=None,
+            "tool",
+            {"input1": "test-value"},
+            meta=None,
         )
 
         # Verify the tool was called successfully
@@ -689,7 +689,8 @@ async def test_call_tool_with_progress_callback(
 
         # Mock the tool callback to invoke progress_callback
         async def tool_with_progress(
-            _name: str, _arguments: dict[str, t.Any],
+            _name: str,
+            _arguments: dict[str, t.Any],
         ) -> t.Iterable[types.Content]:
             # Simulate tool execution with progress updates
             # Note: In the real implementation, the progress_callback is passed
@@ -703,18 +704,21 @@ async def test_call_tool_with_progress_callback(
 
         # Mock session.send_progress_notification to capture calls
         original_send_progress = session.send_progress_notification
+
         async def capture_progress(
             progress_token: int | str,
             progress: float,
             total: float | None = None,
             message: str | None = None,
         ) -> None:
-            progress_notifications.append({
-                "progress_token": progress_token,
-                "progress": progress,
-                "total": total,
-                "message": message,
-            })
+            progress_notifications.append(
+                {
+                    "progress_token": progress_token,
+                    "progress": progress,
+                    "total": total,
+                    "message": message,
+                }
+            )
             # Call original to maintain proper behavior
             await original_send_progress(
                 progress_token=progress_token,
