@@ -1,6 +1,5 @@
 """In-memory metrics collection for per-server and global statistics."""
 
-import statistics
 import time
 from collections import deque
 from dataclasses import dataclass, field

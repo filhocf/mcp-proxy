@@ -2,7 +2,13 @@
 
 import pytest
 
-from mcp_proxy.metrics import MetricsCollector, ServerMetrics, record_metric, get_metrics_status, reset_metrics
+from mcp_proxy.metrics import (
+    MetricsCollector,
+    ServerMetrics,
+    get_metrics_status,
+    record_metric,
+    reset_metrics,
+)
 
 
 @pytest.fixture(autouse=True)
@@ -13,7 +19,7 @@ def clean_metrics():
     reset_metrics()
 
 
-def test_server_metrics_record():
+def test_server_metrics_record() -> None:
     """Test basic recording of metrics."""
     m = ServerMetrics()
     m.record(50.0, False)
@@ -23,7 +29,7 @@ def test_server_metrics_record():
     assert m.last_request_at is not None
 
 
-def test_server_metrics_percentiles():
+def test_server_metrics_percentiles() -> None:
     """Test percentile calculation."""
     m = ServerMetrics()
     # Add 100 values from 1 to 100
@@ -35,14 +41,14 @@ def test_server_metrics_percentiles():
     assert m.latency_p99() == 100.0
 
 
-def test_server_metrics_empty_percentiles():
+def test_server_metrics_empty_percentiles() -> None:
     """Test percentiles with no data."""
     m = ServerMetrics()
     assert m.latency_p50() is None
     assert m.latency_p99() is None
 
 
-def test_server_metrics_to_dict():
+def test_server_metrics_to_dict() -> None:
     """Test dict serialization."""
     m = ServerMetrics()
     m.record(42.0, False)
@@ -54,7 +60,7 @@ def test_server_metrics_to_dict():
     assert d["last_request_at"] is not None
 
 
-def test_collector_multiple_servers():
+def test_collector_multiple_servers() -> None:
     """Test collector with multiple servers."""
     c = MetricsCollector()
     c.record("server-a", 10.0, False)
@@ -69,7 +75,7 @@ def test_collector_multiple_servers():
     assert status["per_server"]["server-b"]["errors_total"] == 1
 
 
-def test_module_level_functions():
+def test_module_level_functions() -> None:
     """Test the module-level record_metric and get_metrics_status."""
     record_metric("test-srv", 25.0, False)
     record_metric("test-srv", 75.0, True)
@@ -80,9 +86,10 @@ def test_module_level_functions():
     assert status["per_server"]["test-srv"]["requests_total"] == 2
 
 
-def test_latency_window_limit():
+def test_latency_window_limit() -> None:
     """Test that latency deque respects window size."""
     from mcp_proxy.metrics import LATENCY_WINDOW
+
     m = ServerMetrics()
     for i in range(LATENCY_WINDOW + 100):
         m.record(float(i), False)
