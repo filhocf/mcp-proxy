@@ -359,8 +359,8 @@ async def run_mcp_server(
                                 status_code=200,
                                 media_type="application/json",
                             )
-                        except Exception:
-                            logger.exception("Failed to lazy-connect server '%s'.", srv_name)
+                        except Exception as e:
+                            logger.exception("Failed to lazy-connect server '%s': %s", srv_name, e)
                             _global_status["server_instances"][srv_name] = {
                                 "status": "failed",
                                 "command": srv_params.command,
