@@ -108,10 +108,17 @@ ignore = [
     "EM101",  # Exception must not use a string literal, assign to variable first
     "TRY003", # Avoid specifying long messages outside the exception class
     "ERA001", # Found commented-out code
+    "FBT001", # Boolean-typed positional argument (upstream pattern)
+    "C901",   # Function too complex (intentional in proxy/server orchestration)
+    "PLR0915", # Too many statements (intentional in proxy/server orchestration)
+    "PERF203", # try-except in loop (intentional for graceful failure)
+    "RUF059", # Unused unpacked variable (test fixtures)
+    "PTH111", # os.path.expanduser (upstream pattern)
+    "RUF100", # Unused noqa directives (upstream has some, harmless)
 ]
 
 [tool.ruff.lint.per-file-ignores]
-"tests/*" = ["S101", "INP001"]
+"tests/*" = ["S101", "INP001", "ARG001", "SIM117", "ASYNC110", "PLC0415", "E501", "ANN401"]
 
 [tool.ruff.lint.pydocstyle]
 convention = "google"

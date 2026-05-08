@@ -361,14 +361,14 @@ def _configure_default_server(
 
     default_server_env = base_env.copy()
     default_server_env.update(
-        {k: os.path.expandvars(os.path.expanduser(v)) for k, v in args_parsed.env}
+        {k: os.path.expandvars(os.path.expanduser(v)) for k, v in args_parsed.env},
     )
 
     default_stdio_params = StdioServerParameters(
         command=args_parsed.command_or_url,
         args=args_parsed.args,
         env=default_server_env,
-        cwd=args_parsed.cwd if args_parsed.cwd else None,
+        cwd=args_parsed.cwd or None,
     )
     logger.info(
         "Configured default server: %s %s",
