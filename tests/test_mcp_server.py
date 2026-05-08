@@ -330,7 +330,7 @@ async def test_run_mcp_server_with_named_servers(
         patch("mcp_proxy.mcp_server.logger") as mock_logger,
     ):
         # Setup mocks
-        mock_stdio_context, mock_session_context, mock_session, mock_http_manager, mock_routes = (
+        mock_stdio_context, mock_session_context, _mock_session, mock_http_manager, mock_routes = (
             setup_async_context_mocks()
         )
         mock_stdio_client.return_value = mock_stdio_context
@@ -387,7 +387,7 @@ async def test_run_mcp_server_with_cors_middleware(
         patch("uvicorn.Server") as mock_uvicorn_server,
     ):
         # Setup mocks
-        mock_stdio_context, mock_session_context, mock_session, mock_http_manager, mock_routes = (
+        mock_stdio_context, mock_session_context, _mock_session, mock_http_manager, mock_routes = (
             setup_async_context_mocks()
         )
         mock_stdio_client.return_value = mock_stdio_context
@@ -435,7 +435,7 @@ async def test_run_mcp_server_custom_expose_headers(
         (
             mock_stdio_context,
             mock_session_context,
-            mock_session,
+            _mock_session,
             mock_http_manager,
             mock_routes,
         ) = setup_async_context_mocks()
@@ -476,7 +476,7 @@ async def test_run_mcp_server_debug_mode(
         patch("uvicorn.Server") as mock_uvicorn_server,
     ):
         # Setup mocks
-        mock_stdio_context, mock_session_context, mock_session, mock_http_manager, mock_routes = (
+        mock_stdio_context, mock_session_context, _mock_session, mock_http_manager, mock_routes = (
             setup_async_context_mocks()
         )
         mock_stdio_client.return_value = mock_stdio_context
@@ -516,7 +516,7 @@ async def test_run_mcp_server_stateless_mode(
         patch("uvicorn.Server") as mock_uvicorn_server,
     ):
         # Setup mocks
-        mock_stdio_context, mock_session_context, mock_session, mock_http_manager, mock_routes = (
+        mock_stdio_context, mock_session_context, _mock_session, mock_http_manager, mock_routes = (
             setup_async_context_mocks()
         )
         mock_stdio_client.return_value = mock_stdio_context
@@ -553,7 +553,7 @@ async def test_run_mcp_server_uvicorn_config(
         patch("uvicorn.Server") as mock_uvicorn_server,
     ):
         # Setup mocks
-        mock_stdio_context, mock_session_context, mock_session, mock_http_manager, mock_routes = (
+        mock_stdio_context, mock_session_context, _mock_session, mock_http_manager, mock_routes = (
             setup_async_context_mocks()
         )
         mock_stdio_client.return_value = mock_stdio_context
@@ -601,7 +601,7 @@ async def test_run_mcp_server_global_status_updates(
         patch("uvicorn.Server") as mock_uvicorn_server,
     ):
         # Setup mocks
-        mock_stdio_context, mock_session_context, mock_session, mock_http_manager, mock_routes = (
+        mock_stdio_context, mock_session_context, _mock_session, mock_http_manager, mock_routes = (
             setup_async_context_mocks()
         )
         mock_stdio_client.return_value = mock_stdio_context
@@ -646,7 +646,7 @@ async def test_run_mcp_server_sse_url_logging(
         patch("mcp_proxy.mcp_server.logger") as mock_logger,
     ):
         # Setup mocks
-        mock_stdio_context, mock_session_context, mock_session, mock_http_manager, mock_routes = (
+        mock_stdio_context, mock_session_context, _mock_session, mock_http_manager, mock_routes = (
             setup_async_context_mocks()
         )
         mock_stdio_client.return_value = mock_stdio_context
@@ -709,7 +709,7 @@ async def test_run_mcp_server_both_default_and_named_servers(
         patch("mcp_proxy.mcp_server.logger") as mock_logger,
     ):
         # Setup mocks
-        mock_stdio_context, mock_session_context, mock_session, mock_http_manager, mock_routes = (
+        mock_stdio_context, mock_session_context, _mock_session, mock_http_manager, mock_routes = (
             setup_async_context_mocks()
         )
         mock_stdio_client.return_value = mock_stdio_context
