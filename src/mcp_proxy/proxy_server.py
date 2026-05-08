@@ -66,7 +66,7 @@ async def create_proxy_server(
     # Must happen before initialize() so the ClientSession advertises roots
     # capability to the downstream server during the handshake.
     callback = create_roots_forwarding_callback(app)
-    remote_app._list_roots_callback = callback  # noqa: SLF001
+    remote_app._list_roots_callback = callback  # type: ignore[assignment]  # noqa: SLF001
 
     logger.debug("Sending initialization request to remote MCP server...")
     response = await remote_app.initialize()
@@ -93,7 +93,8 @@ async def create_proxy_server(
 
     # DISABLED: kiro-cli 0.11.x (rmcp 0.17) fails to parse resource metadata
     # from downstream servers. Resources not used in our workflow.
-    if False:  # capabilities.resources — disabled: rmcp 0.17 incompatible
+    _resources_enabled = False  # rmcp 0.17 incompatible
+    if _resources_enabled and capabilities.resources:
         logger.debug("Capabilities: adding Resources...")
 
         async def _list_resources(_: t.Any) -> types.ServerResult:  # noqa: ANN401
@@ -124,7 +125,7 @@ async def create_proxy_server(
         app.request_handlers[types.SetLevelRequest] = _set_logging_level
 
     # DISABLED: same reason as above — resources incompatible with rmcp 0.17
-    if False:  # capabilities.resources — disabled: rmcp 0.17 incompatible
+    if _resources_enabled and capabilities.resources:
         logger.debug("Capabilities: adding Resources...")
 
         async def _subscribe_resource(req: types.SubscribeRequest) -> types.ServerResult:
