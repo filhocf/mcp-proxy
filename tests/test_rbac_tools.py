@@ -7,7 +7,6 @@ import pytest
 
 from mcp_proxy.mcp_server import APIKeyEntry, RBACToolMiddleware
 
-
 # --- Unit tests for APIKeyEntry.is_tool_allowed ---
 
 
@@ -31,9 +30,7 @@ class TestIsToolAllowed:
         assert entry.is_tool_allowed("kubectl_exec") is False
 
     def test_denied_takes_precedence(self) -> None:
-        entry = APIKeyEntry(
-            key="k", name="dev", allowed_tools=["*"], denied_tools=["kubectl_*"]
-        )
+        entry = APIKeyEntry(key="k", name="dev", allowed_tools=["*"], denied_tools=["kubectl_*"])
         assert entry.is_tool_allowed("memory_store") is True
         assert entry.is_tool_allowed("kubectl_exec") is False
         assert entry.is_tool_allowed("kubectl_apply") is False
@@ -95,7 +92,7 @@ async def test_rbac_allows_permitted_tool() -> None:
     body = _make_jsonrpc_body("tools/call", "memory_store")
     passed_through = False
 
-    async def dummy_app(scope, receive, send):
+    async def dummy_app(scope, receive, send) -> None:
         nonlocal passed_through
         passed_through = True
 
@@ -104,7 +101,7 @@ async def test_rbac_allows_permitted_tool() -> None:
     async def receive():
         return {"type": "http.request", "body": body, "more_body": False}
 
-    async def send(message):
+    async def send(message) -> None:
         pass
 
     scope = _make_scope(entry=entry)
@@ -119,7 +116,7 @@ async def test_rbac_blocks_denied_tool() -> None:
     body = _make_jsonrpc_body("tools/call", "kubectl_exec")
     responses: list[dict] = []
 
-    async def dummy_app(scope, receive, send):
+    async def dummy_app(scope, receive, send) -> None:
         pytest.fail("Should not reach app")
 
     mw = RBACToolMiddleware(dummy_app)
@@ -127,7 +124,7 @@ async def test_rbac_blocks_denied_tool() -> None:
     async def receive():
         return {"type": "http.request", "body": body, "more_body": False}
 
-    async def send(message):
+    async def send(message) -> None:
         responses.append(message)
 
     scope = _make_scope(entry=entry)
@@ -147,7 +144,7 @@ async def test_rbac_blocks_not_in_allowed_list() -> None:
     body = _make_jsonrpc_body("tools/call", "shell_exec")
     responses: list[dict] = []
 
-    async def dummy_app(scope, receive, send):
+    async def dummy_app(scope, receive, send) -> None:
         pytest.fail("Should not reach app")
 
     mw = RBACToolMiddleware(dummy_app)
@@ -155,7 +152,7 @@ async def test_rbac_blocks_not_in_allowed_list() -> None:
     async def receive():
         return {"type": "http.request", "body": body, "more_body": False}
 
-    async def send(message):
+    async def send(message) -> None:
         responses.append(message)
 
     scope = _make_scope(entry=entry)
@@ -171,7 +168,7 @@ async def test_rbac_non_tool_call_passes_through() -> None:
     body = _make_jsonrpc_body("tools/list")
     passed_through = False
 
-    async def dummy_app(scope, receive, send):
+    async def dummy_app(scope, receive, send) -> None:
         nonlocal passed_through
         passed_through = True
 
@@ -180,7 +177,7 @@ async def test_rbac_non_tool_call_passes_through() -> None:
     async def receive():
         return {"type": "http.request", "body": body, "more_body": False}
 
-    async def send(message):
+    async def send(message) -> None:
         pass
 
     scope = _make_scope(entry=entry)
@@ -194,7 +191,7 @@ async def test_rbac_no_entry_passes_through() -> None:
     body = _make_jsonrpc_body("tools/call", "kubectl_exec")
     passed_through = False
 
-    async def dummy_app(scope, receive, send):
+    async def dummy_app(scope, receive, send) -> None:
         nonlocal passed_through
         passed_through = True
 
@@ -203,7 +200,7 @@ async def test_rbac_no_entry_passes_through() -> None:
     async def receive():
         return {"type": "http.request", "body": body, "more_body": False}
 
-    async def send(message):
+    async def send(message) -> None:
         pass
 
     scope = _make_scope()  # No entry
@@ -217,7 +214,7 @@ async def test_rbac_get_request_passes_through() -> None:
     entry = APIKeyEntry(key="k", name="dev", allowed_tools=[])
     passed_through = False
 
-    async def dummy_app(scope, receive, send):
+    async def dummy_app(scope, receive, send) -> None:
         nonlocal passed_through
         passed_through = True
 
@@ -226,7 +223,7 @@ async def test_rbac_get_request_passes_through() -> None:
     async def receive():
         return {"type": "http.request", "body": b"", "more_body": False}
 
-    async def send(message):
+    async def send(message) -> None:
         pass
 
     scope = _make_scope(entry=entry)
@@ -242,7 +239,7 @@ async def test_rbac_wildcard_allowed_no_denied_skips_parsing() -> None:
     body = _make_jsonrpc_body("tools/call", "anything")
     passed_through = False
 
-    async def dummy_app(scope, receive, send):
+    async def dummy_app(scope, receive, send) -> None:
         nonlocal passed_through
         passed_through = True
 
@@ -251,7 +248,7 @@ async def test_rbac_wildcard_allowed_no_denied_skips_parsing() -> None:
     async def receive():
         return {"type": "http.request", "body": body, "more_body": False}
 
-    async def send(message):
+    async def send(message) -> None:
         pass
 
     scope = _make_scope(entry=entry)
@@ -266,7 +263,7 @@ async def test_rbac_preserves_request_id_in_error() -> None:
     body = _make_jsonrpc_body("tools/call", "blocked_tool", req_id=42)
     responses: list[dict] = []
 
-    async def dummy_app(scope, receive, send):
+    async def dummy_app(scope, receive, send) -> None:
         pytest.fail("Should not reach app")
 
     mw = RBACToolMiddleware(dummy_app)
@@ -274,7 +271,7 @@ async def test_rbac_preserves_request_id_in_error() -> None:
     async def receive():
         return {"type": "http.request", "body": body, "more_body": False}
 
-    async def send(message):
+    async def send(message) -> None:
         responses.append(message)
 
     scope = _make_scope(entry=entry)
