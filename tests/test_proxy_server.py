@@ -574,9 +574,8 @@ async def test_call_tool_with_meta_parameter(
     server_can_call_tool: Server[object],
     tool_callback: AsyncMock,
 ) -> None:
-
     """Test that meta parameter is forwarded correctly through the proxy.
-    
+
     This test verifies the fix for the bug where the meta parameter
     (containing progressToken for progress notifications) was not being
     forwarded when calling tools through the proxy.
@@ -586,7 +585,7 @@ async def test_call_tool_with_meta_parameter(
 
         # Mock the tool callback to capture the meta parameter
         tool_callback.return_value = [
-            types.TextContent(type="text", text="Tool executed successfully")
+            types.TextContent(type="text", text="Tool executed successfully"),
         ]
 
         # Call the tool with a meta parameter containing a progressToken
@@ -614,7 +613,7 @@ async def test_call_tool_without_meta_parameter(
     tool_callback: AsyncMock,
 ) -> None:
     """Test that calling a tool without meta parameter still works.
-    
+
     This ensures backward compatibility - tools should work fine
     when no meta parameter is provided.
     """
@@ -622,7 +621,7 @@ async def test_call_tool_without_meta_parameter(
         await session.initialize()
 
         tool_callback.return_value = [
-            types.TextContent(type="text", text="Tool executed without meta")
+            types.TextContent(type="text", text="Tool executed without meta"),
         ]
 
         # Call the tool without meta parameter
@@ -645,19 +644,19 @@ async def test_call_tool_with_empty_meta_parameter(
     tool_callback: AsyncMock,
 ) -> None:
     """Test that calling a tool with None meta parameter works.
-    
+
     This tests the edge case where meta is explicitly set to None.
     """
     async with session_generator(server_can_call_tool) as session:
         await session.initialize()
 
         tool_callback.return_value = [
-            types.TextContent(type="text", text="Tool executed with None meta")
+            types.TextContent(type="text", text="Tool executed with None meta"),
         ]
 
         # Call the tool with None meta parameter
         call_tool_result = await session.call_tool(
-            "tool", {"input1": "test-value"}, meta=None
+            "tool", {"input1": "test-value"}, meta=None,
         )
 
         # Verify the tool was called successfully
@@ -676,7 +675,7 @@ async def test_call_tool_with_progress_callback(
     tool_callback: AsyncMock,
 ) -> None:
     """Test that progress notifications are forwarded through the proxy.
-    
+
     This test verifies that when a tool invokes its progress_callback,
     the proxy correctly forwards those notifications to the parent session
     using the progressToken from the meta parameter.
@@ -687,17 +686,19 @@ async def test_call_tool_with_progress_callback(
 
         # Track progress notifications received by the parent session
         progress_notifications: list[dict[str, t.Any]] = []
-        
+
         # Mock the tool callback to invoke progress_callback
-        async def tool_with_progress(name: str, arguments: dict[str, t.Any]) -> t.Iterable[types.Content]:
+        async def tool_with_progress(
+            _name: str, _arguments: dict[str, t.Any],
+        ) -> t.Iterable[types.Content]:
             # Simulate tool execution with progress updates
             # Note: In the real implementation, the progress_callback is passed
             # to the tool via the _context parameter, but in tests we need to
             # simulate this differently since we're mocking the tool
             return [
-                types.TextContent(type="text", text="Tool executed with progress")
+                types.TextContent(type="text", text="Tool executed with progress"),
             ]
-        
+
         tool_callback.side_effect = tool_with_progress
 
         # Mock session.send_progress_notification to capture calls
@@ -720,7 +721,7 @@ async def test_call_tool_with_progress_callback(
                 progress=progress,
                 total=total,
             )
-        
+
         session.send_progress_notification = capture_progress  # type: ignore[method-assign]
 
         # Call the tool with a meta parameter containing a progressToken
@@ -750,7 +751,7 @@ async def test_call_tool_progress_forwarding_without_token(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     """Test that progress forwarding handles missing progressToken gracefully.
-    
+
     This test verifies that when a tool tries to send progress notifications
     but no progressToken is provided in meta, the proxy logs a warning
     instead of crashing.
@@ -760,7 +761,7 @@ async def test_call_tool_progress_forwarding_without_token(
         await session.initialize()
 
         tool_callback.return_value = [
-            types.TextContent(type="text", text="Tool executed")
+            types.TextContent(type="text", text="Tool executed"),
         ]
 
         # Call the tool without progressToken in meta
