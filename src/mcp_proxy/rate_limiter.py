@@ -44,7 +44,7 @@ class ServerRateLimiter:
         self._semaphore.release()
 
 
-def create_rate_limited_call_tool(
+def create_rate_limited_call_tool(  # type: ignore
     original_handler, rate_limiter: ServerRateLimiter, server_name: str
 ):
     """Wrap a call_tool handler with rate limiting."""
@@ -69,7 +69,7 @@ def create_rate_limited_call_tool(
                 ),
             )
         try:
-            return await original_handler(req)
+            return await original_handler(req)  # type: ignore
         finally:
             rate_limiter.release()
 
