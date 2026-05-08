@@ -132,11 +132,14 @@ async def test_sse_rejected_with_wrong_key(auth_server: str) -> None:
 
 async def test_sse_accepted_with_correct_key(auth_server: str) -> None:
     """SSE endpoint should accept requests with correct API key."""
-    async with httpx.AsyncClient() as client, client.stream(
-        "GET",
-        f"{auth_server}/sse",
-        headers={"Authorization": f"Bearer {API_KEY}"},
-    ) as resp:
+    async with (
+        httpx.AsyncClient() as client,
+        client.stream(
+            "GET",
+            f"{auth_server}/sse",
+            headers={"Authorization": f"Bearer {API_KEY}"},
+        ) as resp,
+    ):
         assert resp.status_code == 200
 
 
@@ -180,9 +183,13 @@ async def test_options_bypasses_auth(auth_server: str) -> None:
 
 async def test_no_auth_configured_allows_all(noauth_server: str) -> None:
     """When no API key is configured, all requests should pass through."""
-    async with httpx.AsyncClient() as client, client.stream(
-        "GET", f"{noauth_server}/sse",
-    ) as resp:
+    async with (
+        httpx.AsyncClient() as client,
+        client.stream(
+            "GET",
+            f"{noauth_server}/sse",
+        ) as resp,
+    ):
         assert resp.status_code == 200
 
 
