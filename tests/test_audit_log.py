@@ -7,8 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from mcp_proxy.mcp_server import APIKeyEntry, AuditLogMiddleware, AuditLogger
-
+from mcp_proxy.mcp_server import APIKeyEntry, AuditLogger, AuditLogMiddleware
 
 # --- Unit tests for AuditLogger ---
 
@@ -17,7 +16,7 @@ def test_audit_logger_creates_directory() -> None:
     """AuditLogger creates parent directories if missing."""
     with tempfile.TemporaryDirectory() as tmpdir:
         log_path = Path(tmpdir) / "subdir" / "audit.jsonl"
-        logger = AuditLogger(log_path)
+        AuditLogger(log_path)
         assert log_path.parent.exists()
 
 
@@ -128,8 +127,9 @@ async def test_audit_logs_tool_call() -> None:
     entry = APIKeyEntry(key="k", name="dev-user", allowed_servers=["*"])
     body = _make_jsonrpc_body("tools/call", "memory_store", {"content": "hello"})
 
-    async def dummy_app(scope, receive, send):
+    async def dummy_app(scope, receive, send) -> None:
         from starlette.responses import JSONResponse
+
         resp = JSONResponse({"jsonrpc": "2.0", "result": {}, "id": 1})
         await resp(scope, receive, send)
 
@@ -140,7 +140,7 @@ async def test_audit_logs_tool_call() -> None:
 
     responses = []
 
-    async def send(message):
+    async def send(message) -> None:
         responses.append(message)
 
     scope = _make_scope("/servers/memory-service/mcp", entry=entry)
@@ -167,8 +167,9 @@ async def test_audit_does_not_log_non_tool_calls() -> None:
     entry = APIKeyEntry(key="k", name="user", allowed_servers=["*"])
     body = _make_jsonrpc_body("tools/list")
 
-    async def dummy_app(scope, receive, send):
+    async def dummy_app(scope, receive, send) -> None:
         from starlette.responses import JSONResponse
+
         resp = JSONResponse({"jsonrpc": "2.0", "result": [], "id": 1})
         await resp(scope, receive, send)
 
@@ -177,7 +178,7 @@ async def test_audit_does_not_log_non_tool_calls() -> None:
     async def receive():
         return {"type": "http.request", "body": body, "more_body": False}
 
-    async def send(message):
+    async def send(message) -> None:
         pass
 
     scope = _make_scope(entry=entry)
@@ -199,8 +200,9 @@ async def test_audit_logs_error_status() -> None:
     entry = APIKeyEntry(key="k", name="user", allowed_servers=["*"])
     body = _make_jsonrpc_body("tools/call", "failing_tool")
 
-    async def error_app(scope, receive, send):
+    async def error_app(scope, receive, send) -> None:
         from starlette.responses import JSONResponse
+
         resp = JSONResponse({"error": "internal"}, status_code=500)
         await resp(scope, receive, send)
 
@@ -209,7 +211,7 @@ async def test_audit_logs_error_status() -> None:
     async def receive():
         return {"type": "http.request", "body": body, "more_body": False}
 
-    async def send(message):
+    async def send(message) -> None:
         pass
 
     scope = _make_scope(entry=entry)
@@ -230,8 +232,9 @@ async def test_audit_anonymous_when_no_auth() -> None:
     audit_logger = AuditLogger(log_path)
     body = _make_jsonrpc_body("tools/call", "some_tool")
 
-    async def dummy_app(scope, receive, send):
+    async def dummy_app(scope, receive, send) -> None:
         from starlette.responses import JSONResponse
+
         resp = JSONResponse({"jsonrpc": "2.0", "result": {}, "id": 1})
         await resp(scope, receive, send)
 
@@ -240,7 +243,7 @@ async def test_audit_anonymous_when_no_auth() -> None:
     async def receive():
         return {"type": "http.request", "body": body, "more_body": False}
 
-    async def send(message):
+    async def send(message) -> None:
         pass
 
     scope = _make_scope()  # No entry
@@ -261,7 +264,7 @@ async def test_audit_get_request_passes_through() -> None:
     audit_logger = AuditLogger(log_path)
     passed_through = False
 
-    async def dummy_app(scope, receive, send):
+    async def dummy_app(scope, receive, send) -> None:
         nonlocal passed_through
         passed_through = True
 
@@ -270,7 +273,7 @@ async def test_audit_get_request_passes_through() -> None:
     async def receive():
         return {"type": "http.request", "body": b"", "more_body": False}
 
-    async def send(message):
+    async def send(message) -> None:
         pass
 
     scope = _make_scope()

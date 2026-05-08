@@ -444,7 +444,7 @@ def _configure_named_servers_from_cli(
 
 def _create_mcp_settings(args_parsed: argparse.Namespace) -> MCPServerSettings:
     """Create MCP server settings from parsed arguments."""
-    from .mcp_server import APIKeyEntry, load_api_keys_config
+    from .mcp_server import APIKeyEntry, load_api_keys_config  # type: ignore
 
     expose_headers = (
         list(DEFAULT_EXPOSE_HEADERS)
@@ -459,7 +459,7 @@ def _create_mcp_settings(args_parsed: argparse.Namespace) -> MCPServerSettings:
     if api_keys_file:
         api_keys = load_api_keys_config(api_keys_file)
 
-    return MCPServerSettings(
+    return MCPServerSettings(  # type: ignore
         bind_host=args_parsed.host if args_parsed.host is not None else args_parsed.sse_host,
         port=args_parsed.port if args_parsed.port is not None else args_parsed.sse_port,
         stateless=args_parsed.stateless,

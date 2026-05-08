@@ -3,12 +3,10 @@
 
 import json
 import tempfile
-from pathlib import Path
 
 import pytest
 
 from mcp_proxy.mcp_server import APIKeyEntry, APIKeyMiddleware, load_api_keys_config
-
 
 # --- Unit tests for load_api_keys_config ---
 
@@ -68,9 +66,7 @@ class TestServerAccessCheck:
         assert APIKeyMiddleware._has_server_access(entry, "memory-service") is False
 
     def test_multiple_patterns(self) -> None:
-        entry = APIKeyEntry(
-            key="k", name="dev", allowed_servers=["memory-service", "db-*"]
-        )
+        entry = APIKeyEntry(key="k", name="dev", allowed_servers=["memory-service", "db-*"])
         assert APIKeyMiddleware._has_server_access(entry, "memory-service") is True
         assert APIKeyMiddleware._has_server_access(entry, "db-mcp-py") is True
         assert APIKeyMiddleware._has_server_access(entry, "kubectl") is False
@@ -80,7 +76,9 @@ class TestExtractServerName:
     """Test _extract_server_name static method."""
 
     def test_named_server_path(self) -> None:
-        assert APIKeyMiddleware._extract_server_name("/servers/memory-service/sse") == "memory-service"
+        assert (
+            APIKeyMiddleware._extract_server_name("/servers/memory-service/sse") == "memory-service"
+        )
 
     def test_default_server_sse(self) -> None:
         assert APIKeyMiddleware._extract_server_name("/sse") == "default"
@@ -103,11 +101,17 @@ def multi_key_middleware():
     """Create middleware with multiple keys."""
     keys = [
         APIKeyEntry(key="admin-key", name="admin", role="admin", allowed_servers=["*"]),
-        APIKeyEntry(key="dev-key", name="dev-jr", role="dev", allowed_servers=["memory-service", "db-mcp-py"]),
+        APIKeyEntry(
+            key="dev-key",
+            name="dev-jr",
+            role="dev",
+            allowed_servers=["memory-service", "db-mcp-py"],
+        ),
     ]
 
-    async def dummy_app(scope, receive, send):
+    async def dummy_app(scope, receive, send) -> None:
         from starlette.responses import JSONResponse
+
         resp = JSONResponse({"ok": True})
         await resp(scope, receive, send)
 
@@ -135,7 +139,7 @@ async def test_multi_key_admin_access_all_servers(multi_key_middleware) -> None:
     async def receive():
         return {"type": "http.request", "body": b""}
 
-    async def send(message):
+    async def send(message) -> None:
         responses.append(message)
 
     scope = _make_scope("/servers/memory-service/sse", token="admin-key")
@@ -153,7 +157,7 @@ async def test_multi_key_dev_access_allowed_server(multi_key_middleware) -> None
     async def receive():
         return {"type": "http.request", "body": b""}
 
-    async def send(message):
+    async def send(message) -> None:
         responses.append(message)
 
     scope = _make_scope("/servers/memory-service/sse", token="dev-key")
@@ -170,7 +174,7 @@ async def test_multi_key_dev_denied_server(multi_key_middleware) -> None:
     async def receive():
         return {"type": "http.request", "body": b""}
 
-    async def send(message):
+    async def send(message) -> None:
         responses.append(message)
 
     scope = _make_scope("/servers/kubectl/sse", token="dev-key")
@@ -187,7 +191,7 @@ async def test_multi_key_invalid_key_401(multi_key_middleware) -> None:
     async def receive():
         return {"type": "http.request", "body": b""}
 
-    async def send(message):
+    async def send(message) -> None:
         responses.append(message)
 
     scope = _make_scope("/servers/memory-service/sse", token="wrong-key")
@@ -204,7 +208,7 @@ async def test_multi_key_public_paths_bypass(multi_key_middleware) -> None:
     async def receive():
         return {"type": "http.request", "body": b""}
 
-    async def send(message):
+    async def send(message) -> None:
         responses.append(message)
 
     scope = _make_scope("/health")
@@ -219,9 +223,10 @@ async def test_multi_key_stores_entry_in_scope(multi_key_middleware) -> None:
     responses = []
     captured_scope = {}
 
-    async def dummy_app(scope, receive, send):
+    async def dummy_app(scope, receive, send) -> None:
         captured_scope.update(scope)
         from starlette.responses import JSONResponse
+
         resp = JSONResponse({"ok": True})
         await resp(scope, receive, send)
 
@@ -231,7 +236,7 @@ async def test_multi_key_stores_entry_in_scope(multi_key_middleware) -> None:
     async def receive():
         return {"type": "http.request", "body": b""}
 
-    async def send(message):
+    async def send(message) -> None:
         responses.append(message)
 
     scope = _make_scope("/servers/any/sse", token="test-key")
@@ -244,8 +249,9 @@ async def test_backward_compat_single_key() -> None:
     """Single api_key param still works (backward compatible)."""
     responses = []
 
-    async def dummy_app(scope, receive, send):
+    async def dummy_app(scope, receive, send) -> None:
         from starlette.responses import JSONResponse
+
         resp = JSONResponse({"ok": True})
         await resp(scope, receive, send)
 
@@ -254,7 +260,7 @@ async def test_backward_compat_single_key() -> None:
     async def receive():
         return {"type": "http.request", "body": b""}
 
-    async def send(message):
+    async def send(message) -> None:
         responses.append(message)
 
     scope = _make_scope("/sse", token="legacy-key")
