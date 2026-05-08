@@ -26,31 +26,31 @@ def _cleanup():
 class TestCircuitBreakerStates:
     """Test circuit breaker state transitions."""
 
-    def test_initial_state_is_closed(self):
+    def test_initial_state_is_closed(self) -> None:
         cb = CircuitBreaker()
         assert cb.state == CircuitState.CLOSED
 
-    def test_stays_closed_below_threshold(self):
+    def test_stays_closed_below_threshold(self) -> None:
         cb = CircuitBreaker(config=CircuitBreakerConfig(failure_threshold=3))
         cb.record_failure()
         cb.record_failure()
         assert cb.state == CircuitState.CLOSED
 
-    def test_opens_at_threshold(self):
+    def test_opens_at_threshold(self) -> None:
         cb = CircuitBreaker(config=CircuitBreakerConfig(failure_threshold=3))
         cb.record_failure()
         cb.record_failure()
         cb.record_failure()
         assert cb.state == CircuitState.OPEN
 
-    def test_open_blocks_requests(self):
+    def test_open_blocks_requests(self) -> None:
         cb = CircuitBreaker(config=CircuitBreakerConfig(failure_threshold=2))
         cb.record_failure()
         cb.record_failure()
         assert cb.state == CircuitState.OPEN
         assert cb.allow_request() is False
 
-    def test_transitions_to_half_open_after_timeout(self):
+    def test_transitions_to_half_open_after_timeout(self) -> None:
         cb = CircuitBreaker(config=CircuitBreakerConfig(failure_threshold=1, recovery_timeout=1.0))
         cb.record_failure()
         assert cb.state == CircuitState.OPEN
@@ -60,7 +60,7 @@ class TestCircuitBreakerStates:
             assert cb.state == CircuitState.HALF_OPEN
             assert cb.allow_request() is True
 
-    def test_half_open_success_closes_circuit(self):
+    def test_half_open_success_closes_circuit(self) -> None:
         cb = CircuitBreaker(config=CircuitBreakerConfig(failure_threshold=1, recovery_timeout=1.0))
         cb.record_failure()
         assert cb.state == CircuitState.OPEN
@@ -73,7 +73,7 @@ class TestCircuitBreakerStates:
 
         assert cb.state == CircuitState.CLOSED
 
-    def test_half_open_failure_reopens_circuit(self):
+    def test_half_open_failure_reopens_circuit(self) -> None:
         cb = CircuitBreaker(config=CircuitBreakerConfig(failure_threshold=1, recovery_timeout=10.0))
         cb.record_failure()
         assert cb.state == CircuitState.OPEN
@@ -88,7 +88,7 @@ class TestCircuitBreakerStates:
         # (and recovery_timeout hasn't elapsed from the new failure time)
         assert cb._state == CircuitState.OPEN
 
-    def test_success_resets_failure_count(self):
+    def test_success_resets_failure_count(self) -> None:
         cb = CircuitBreaker(config=CircuitBreakerConfig(failure_threshold=3))
         cb.record_failure()
         cb.record_failure()
@@ -98,7 +98,7 @@ class TestCircuitBreakerStates:
         cb.record_failure()
         assert cb.state == CircuitState.CLOSED
 
-    def test_closed_allows_requests(self):
+    def test_closed_allows_requests(self) -> None:
         cb = CircuitBreaker()
         assert cb.allow_request() is True
 
@@ -106,24 +106,24 @@ class TestCircuitBreakerStates:
 class TestCircuitBreakerRegistry:
     """Test circuit breaker registry functions."""
 
-    def test_get_unregistered_returns_none(self):
+    def test_get_unregistered_returns_none(self) -> None:
         assert get_circuit_breaker("nonexistent") is None
 
-    def test_register_and_get(self):
+    def test_register_and_get(self) -> None:
         register_circuit_breaker("test-server", {"failure_threshold": 5, "recovery_timeout": 60})
         cb = get_circuit_breaker("test-server")
         assert cb is not None
         assert cb.config.failure_threshold == 5
         assert cb.config.recovery_timeout == 60.0
 
-    def test_register_with_defaults(self):
+    def test_register_with_defaults(self) -> None:
         register_circuit_breaker("test-server", {})
         cb = get_circuit_breaker("test-server")
         assert cb is not None
         assert cb.config.failure_threshold == 3
         assert cb.config.recovery_timeout == 30.0
 
-    def test_clear_removes_all(self):
+    def test_clear_removes_all(self) -> None:
         register_circuit_breaker("s1", {})
         register_circuit_breaker("s2", {})
         clear_circuit_breakers()

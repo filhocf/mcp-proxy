@@ -63,9 +63,7 @@ class CircuitBreaker:
         current = self.check_state()  # triggers open->half-open transition
         if current == CircuitState.CLOSED:
             return True
-        if current == CircuitState.HALF_OPEN:
-            return True
-        return False
+        return current == CircuitState.HALF_OPEN
 
 
 # Global registry of circuit breakers per server name

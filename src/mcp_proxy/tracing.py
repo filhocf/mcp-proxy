@@ -6,8 +6,9 @@ Zero overhead when OTEL_EXPORTER_OTLP_ENDPOINT is not set or otel packages not i
 import logging
 import os
 import time
+from collections.abc import Generator
 from contextlib import contextmanager
-from typing import Any, Generator
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -28,11 +29,11 @@ def _init_tracer() -> Any:
         return None
 
     try:
-        from opentelemetry import trace
-        from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
-        from opentelemetry.sdk.resources import Resource
-        from opentelemetry.sdk.trace import TracerProvider
-        from opentelemetry.sdk.trace.export import BatchSpanProcessor
+        from opentelemetry import trace  # type: ignore
+        from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter  # type: ignore
+        from opentelemetry.sdk.resources import Resource  # type: ignore
+        from opentelemetry.sdk.trace import TracerProvider  # type: ignore
+        from opentelemetry.sdk.trace.export import BatchSpanProcessor  # type: ignore
 
         resource = Resource.create({"service.name": "mcp-proxy"})
         provider = TracerProvider(resource=resource)
@@ -84,7 +85,8 @@ def trace_tool_call(server_name: str, tool_name: str) -> Generator[dict[str, Any
 def _get_status_code_error() -> Any:
     """Get StatusCode.ERROR safely."""
     try:
-        from opentelemetry.trace import StatusCode
+        from opentelemetry.trace import StatusCode  # type: ignore
+
         return StatusCode.ERROR
     except ImportError:
         return None
