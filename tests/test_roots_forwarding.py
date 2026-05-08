@@ -40,7 +40,9 @@ def test_server() -> Server[object]:
         ]
 
     @srv.call_tool()  # type: ignore[misc]
-    async def _call(_name: str, arguments: dict[str, t.Any] | None) -> list[types.Content]:  # pragma: no cover
+    async def _call(
+        _name: str, arguments: dict[str, t.Any] | None
+    ) -> list[types.Content]:  # pragma: no cover
         return [types.TextContent(type="text", text=str(arguments))]
 
     return srv
@@ -99,7 +101,9 @@ async def test_callback_returns_error_when_no_request_context() -> None:
     assert "No active upstream session" in result.message
 
 
-async def test_callback_returns_error_on_upstream_exception(monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_callback_returns_error_on_upstream_exception(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """When the upstream session raises, return ErrorData with INTERNAL_ERROR."""
     app: server.Server[object] = server.Server(name="test-proxy")
 
