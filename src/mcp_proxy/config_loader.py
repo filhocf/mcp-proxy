@@ -87,7 +87,7 @@ def load_named_server_configs_from_file(
 
         new_env = base_env.copy()
         new_env.update(
-            {k: os.path.expandvars(os.path.expanduser(v)) for k, v in env.items()}
+            {k: os.path.expandvars(str(Path(v).expanduser())) for k, v in env.items()},
         )
 
         named_stdio_params[name] = StdioServerParameters(
