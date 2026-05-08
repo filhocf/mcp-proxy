@@ -30,8 +30,7 @@ def create_roots_forwarding_callback(
 
     async def _forward_roots(_ctx: t.Any) -> types.ListRootsResult | types.ErrorData:  # noqa: ANN401
         try:
-            result = await proxy_app.request_context.session.list_roots()
-            return result
+            return await proxy_app.request_context.session.list_roots()
         except LookupError:
             # request_context not set — no active upstream session
             logger.warning("roots/list requested but no active upstream session available")
@@ -51,7 +50,7 @@ def create_roots_forwarding_callback(
 
 async def create_proxy_server(
     remote_app: ClientSession,
-) -> server.Server[object]:  # noqa: C901, PLR0915
+) -> server.Server[object]:
     """Create a server instance from a remote app.
 
     Roots/list requests from the downstream server are forwarded through the proxy
@@ -67,7 +66,7 @@ async def create_proxy_server(
     # Must happen before initialize() so the ClientSession advertises roots
     # capability to the downstream server during the handshake.
     callback = create_roots_forwarding_callback(app)
-    remote_app._list_roots_callback = callback  # noqa: SLF001
+    remote_app._list_roots_callback = callback  # type: ignore[assignment]  # noqa: SLF001
 
     logger.debug("Sending initialization request to remote MCP server...")
     response = await remote_app.initialize()
@@ -94,7 +93,8 @@ async def create_proxy_server(
 
     # DISABLED: kiro-cli 0.11.x (rmcp 0.17) fails to parse resource metadata
     # from downstream servers. Resources not used in our workflow.
-    if False:  # capabilities.resources — disabled: rmcp 0.17 incompatible
+    _resources_enabled = False  # rmcp 0.17 incompatible
+    if _resources_enabled and capabilities.resources:
         logger.debug("Capabilities: adding Resources...")
 
         async def _list_resources(_: t.Any) -> types.ServerResult:  # noqa: ANN401
@@ -125,7 +125,7 @@ async def create_proxy_server(
         app.request_handlers[types.SetLevelRequest] = _set_logging_level
 
     # DISABLED: same reason as above — resources incompatible with rmcp 0.17
-    if False:  # capabilities.resources — disabled: rmcp 0.17 incompatible
+    if _resources_enabled and capabilities.resources:
         logger.debug("Capabilities: adding Resources...")
 
         async def _subscribe_resource(req: types.SubscribeRequest) -> types.ServerResult:
@@ -152,19 +152,23 @@ async def create_proxy_server(
         async def _call_tool(req: types.CallToolRequest) -> types.ServerResult:
             try:
                 # Get request context to access server session for progress forwarding
-                from mcp.server.lowlevel.server import request_ctx
+                from mcp.server.lowlevel.server import request_ctx  # noqa: PLC0415
                 ctx = request_ctx.get()
-                
+
                 # Convert meta to dict if present (required for TypedDict compatibility)
                 meta_dict = dict(req.params.meta) if req.params.meta else None
 
                 # Create progress forwarder callback
-                # Note: The callback receives individual parameters, not a ProgressNotificationParams object
+                # Note: The callback receives individual parameters,
+                # not a ProgressNotificationParams object
                 # Capture sys in closure to avoid scoping issues
                 _stderr = sys.stderr
-                async def progress_forwarder(progress: float, total: float | None, message: str | None) -> None:
+
+                async def progress_forwarder(
+                    progress: float, total: float | None, message: str | None,
+                ) -> None:
                     # Extract progress token from meta
-                    progress_token = meta_dict.get('progressToken') if meta_dict else None
+                    progress_token = meta_dict.get("progressToken") if meta_dict else None
                     if progress_token is not None:
                         # Forward progress notification back to parent via server session
                         await ctx.session.send_progress_notification(
@@ -176,7 +180,8 @@ async def create_proxy_server(
                         )
                     else:
                         print(
-                            "[MCP-PROXY] WARNING: No progressToken in meta, cannot forward progress notification",
+                            "[MCP-PROXY] WARNING: No progressToken in meta,"
+                            " cannot forward progress notification",
                             file=_stderr,
                             flush=True,
                         )
