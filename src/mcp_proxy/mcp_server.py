@@ -319,6 +319,67 @@ async def run_mcp_server(
                 ", ".join(failed_servers),
             )
 
+        # Setup lazy server routes (connect on first request)
+        for name in lazy_servers:
+            server_config = named_server_params[name]
+            params = server_config.params
+
+            async def _make_lazy_handler(srv_name: str, srv_params: StdioServerParameters):
+                """Create a closure that connects on first request."""
+                connected = False
+
+                async def lazy_handler(request: Request) -> Response:
+                    nonlocal connected
+                    if not connected:
+                        try:
+                            logger.info("Lazy connecting server '%s'...", srv_name)
+                            stdio_streams = await stack.enter_async_context(stdio_client(srv_params))
+                            session = await stack.enter_async_context(ClientSession(*stdio_streams))
+                            proxy = await create_proxy_server(session)
+                            routes, http_mgr = create_single_instance_routes(
+                                proxy, stateless_instance=mcp_settings.stateless,
+                            )
+                            await stack.enter_async_context(http_mgr.run())
+                            # Replace placeholder with real routes
+                            mount = Mount(f"/servers/{srv_name}", routes=routes)
+                            # Update starlette app routes
+                            for i, r in enumerate(starlette_app.routes):
+                                if hasattr(r, "path") and r.path == f"/servers/{srv_name}":
+                                    starlette_app.routes[i] = mount
+                                    break
+                            _global_status["server_instances"][srv_name] = {
+                                "status": "running",
+                                "command": srv_params.command,
+                            }
+                            connected = True
+                            logger.info("Lazy server '%s' connected successfully.", srv_name)
+                            # Return redirect to retry the request on the now-active route
+                            return Response(
+                                content=f'{{"status": "connected", "message": "Server {srv_name} is now ready. Please retry your request."}}',
+                                status_code=200,
+                                media_type="application/json",
+                            )
+                        except Exception:
+                            logger.exception("Failed to lazy-connect server '%s'.", srv_name)
+                            _global_status["server_instances"][srv_name] = {
+                                "status": "failed",
+                                "command": srv_params.command,
+                            }
+                            return Response(
+                                content=f'{{"error": "Server {srv_name} unavailable. Is VPN active?"}}',
+                                status_code=503,
+                                media_type="application/json",
+                            )
+                    return Response(content='{"status": "connected"}', status_code=200, media_type="application/json")
+
+                return lazy_handler
+
+            handler = await _make_lazy_handler(name, params)
+            lazy_mount = Mount(f"/servers/{name}", routes=[
+                Route("/{path:path}", endpoint=handler, methods=["GET", "POST"]),
+            ])
+            all_routes.append(lazy_mount)
+
         if not default_server_params and not named_server_params:
             logger.error("No servers configured to run.")
             return
