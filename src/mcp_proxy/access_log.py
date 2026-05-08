@@ -8,6 +8,8 @@ from datetime import datetime, timezone
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
+from typing_extensions import Self
+
 DEFAULT_LOG_PATH = os.path.expanduser("~/dtp/ai-configs/mcp-proxy/logs/access.jsonl")
 MAX_BYTES = 10 * 1024 * 1024  # 10MB
 BACKUP_COUNT = 5
@@ -61,7 +63,7 @@ class RequestTimer:
         self.start_time: float = 0
         self.elapsed_ms: float = 0
 
-    def __enter__(self) -> "RequestTimer":
+    def __enter__(self) -> Self:
         self.start_time = time.perf_counter()
         return self
 
