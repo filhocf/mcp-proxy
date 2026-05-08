@@ -11,8 +11,6 @@ import typing as t
 from mcp import server, types
 from mcp.client.session import ClientSession
 
-from .circuit_breaker import CircuitState, get_circuit_breaker
-
 logger = logging.getLogger(__name__)
 
 
@@ -32,8 +30,7 @@ def create_roots_forwarding_callback(
 
     async def _forward_roots(_ctx: t.Any) -> types.ListRootsResult | types.ErrorData:  # noqa: ANN401
         try:
-            result = await proxy_app.request_context.session.list_roots()
-            return result
+            return await proxy_app.request_context.session.list_roots()
         except LookupError:
             # request_context not set — no active upstream session
             logger.warning("roots/list requested but no active upstream session available")
@@ -53,8 +50,7 @@ def create_roots_forwarding_callback(
 
 async def create_proxy_server(
     remote_app: ClientSession,
-    server_name: str = "",
-) -> server.Server[object]:  # noqa: C901, PLR0915
+) -> server.Server[object]:
     """Create a server instance from a remote app.
 
     Roots/list requests from the downstream server are forwarded through the proxy
@@ -153,35 +149,25 @@ async def create_proxy_server(
         app.request_handlers[types.ListToolsRequest] = _list_tools
 
         async def _call_tool(req: types.CallToolRequest) -> types.ServerResult:
-            # Circuit breaker check
-            cb = get_circuit_breaker(server_name) if server_name else None
-            if cb and not cb.allow_request():
-                return types.ServerResult(
-                    types.CallToolResult(
-                        content=[types.TextContent(
-                            type="text",
-                            text=f"Circuit breaker OPEN for server '{server_name}'. "
-                            f"Server is temporarily unavailable.",
-                        )],
-                        isError=True,
-                    ),
-                )
-
             try:
                 # Get request context to access server session for progress forwarding
-                from mcp.server.lowlevel.server import request_ctx
+                from mcp.server.lowlevel.server import request_ctx  # noqa: PLC0415
                 ctx = request_ctx.get()
-                
+
                 # Convert meta to dict if present (required for TypedDict compatibility)
                 meta_dict = dict(req.params.meta) if req.params.meta else None
 
                 # Create progress forwarder callback
-                # Note: The callback receives individual parameters, not a ProgressNotificationParams object
+                # Note: The callback receives individual parameters,
+                # not a ProgressNotificationParams object
                 # Capture sys in closure to avoid scoping issues
                 _stderr = sys.stderr
-                async def progress_forwarder(progress: float, total: float | None, message: str | None) -> None:
+
+                async def progress_forwarder(
+                    progress: float, total: float | None, message: str | None,
+                ) -> None:
                     # Extract progress token from meta
-                    progress_token = meta_dict.get('progressToken') if meta_dict else None
+                    progress_token = meta_dict.get("progressToken") if meta_dict else None
                     if progress_token is not None:
                         # Forward progress notification back to parent via server session
                         await ctx.session.send_progress_notification(
@@ -193,7 +179,8 @@ async def create_proxy_server(
                         )
                     else:
                         print(
-                            "[MCP-PROXY] WARNING: No progressToken in meta, cannot forward progress notification",
+                            "[MCP-PROXY] WARNING: No progressToken in meta,"
+                            " cannot forward progress notification",
                             file=_stderr,
                             flush=True,
                         )
@@ -218,19 +205,8 @@ async def create_proxy_server(
                         types.TextContent(type="text", text=fallback_text),
                     )
                     result = result.model_copy(update={"content": new_content})
-
-                # Record success for circuit breaker
-                # Note: isError=True from tool is a logical error (not connection failure),
-                # so we still record success to not trip the breaker
-                if cb:
-                    cb.record_success()
-
                 return types.ServerResult(result)
             except Exception as e:  # noqa: BLE001
-                # Record failure for circuit breaker (connection/transport errors)
-                if cb:
-                    cb.record_failure()
-
                 return types.ServerResult(
                     types.CallToolResult(
                         content=[types.TextContent(type="text", text=str(e))],
