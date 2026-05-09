@@ -33,7 +33,13 @@ def is_retryable_error(exc: Exception) -> bool:
         OSError,
         asyncio.TimeoutError,
     )
-    return isinstance(exc, retryable_types)
+    if isinstance(exc, retryable_types):
+        return True
+    # For generic Exception, check message keywords only if not a specific subclass
+    if type(exc) is Exception:
+        msg = str(exc).lower()
+        return any(keyword in msg for keyword in ("connection", "timeout", "broken pipe", "eof"))
+    return False
 
 
 # Global registry of retry configs per server name
