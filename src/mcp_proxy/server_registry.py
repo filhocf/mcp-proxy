@@ -75,10 +75,11 @@ class ServerRegistry:
 
             # Merge: keep disabled servers from existing config
             existing_servers = data.get("mcpServers", {})
-            merged: dict[str, Any] = {}
-            for name, config in existing_servers.items():
-                if not config.get("enabled", True):
-                    merged[name] = config  # Preserve disabled servers
+            merged: dict[str, Any] = {
+                name: config
+                for name, config in existing_servers.items()
+                if not config.get("enabled", True)
+            }
             # Add/update active servers from registry
             for name, config in self._servers.items():
                 merged[name] = {k: v for k, v in config.items() if k != "name"}
@@ -86,7 +87,7 @@ class ServerRegistry:
             data["mcpServers"] = merged
 
             # Atomic write: write to temp file then rename
-            tmp_fd = tempfile.NamedTemporaryFile(
+            tmp_fd = tempfile.NamedTemporaryFile(  # noqa: SIM115
                 mode="w",
                 dir=self._config_path.parent,
                 suffix=".tmp",

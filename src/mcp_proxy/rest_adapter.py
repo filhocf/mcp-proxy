@@ -190,7 +190,8 @@ async def load_spec_from_url(url: str, headers: dict[str, str] | None = None) ->
         try:
             resp = await client.get(url, headers=headers or {}, timeout=30.0)
             resp.raise_for_status()
-            return resp.json()  # type: ignore
+            data: dict[str, Any] = resp.json()
+            return data
         except httpx.RequestError as e:
             msg = f"Failed to fetch OpenAPI spec from {url}: {e}"
             raise RuntimeError(msg) from e

@@ -29,11 +29,11 @@ def _init_tracer() -> Any:
         return None
 
     try:
-        from opentelemetry import trace  # type: ignore
-        from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter  # type: ignore
-        from opentelemetry.sdk.resources import Resource  # type: ignore
-        from opentelemetry.sdk.trace import TracerProvider  # type: ignore
-        from opentelemetry.sdk.trace.export import BatchSpanProcessor  # type: ignore
+        from opentelemetry import trace  # noqa: PLC0415
+        from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter  # noqa: PLC0415
+        from opentelemetry.sdk.resources import Resource  # noqa: PLC0415
+        from opentelemetry.sdk.trace import TracerProvider  # noqa: PLC0415
+        from opentelemetry.sdk.trace.export import BatchSpanProcessor  # noqa: PLC0415
 
         resource = Resource.create({"service.name": "mcp-proxy"})
         provider = TracerProvider(resource=resource)
@@ -85,7 +85,7 @@ def trace_tool_call(server_name: str, tool_name: str) -> Generator[dict[str, Any
 def _get_status_code_error() -> Any:
     """Get StatusCode.ERROR safely."""
     try:
-        from opentelemetry.trace import StatusCode  # type: ignore
+        from opentelemetry.trace import StatusCode  # noqa: PLC0415
 
         return StatusCode.ERROR
     except ImportError:

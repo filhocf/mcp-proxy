@@ -3,7 +3,9 @@
 import json
 import logging
 import secrets
+from collections.abc import Awaitable, Callable
 
+from mcp.client.stdio import StdioServerParameters
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 from starlette.routing import Route
@@ -31,8 +33,8 @@ def _check_admin_auth(request: Request, api_key: str | None) -> JSONResponse | N
 def create_admin_routes(
     registry: ServerRegistry,
     api_key: str | None = None,
-    on_register: "callable | None" = None,  # type: ignore
-    on_unregister: "callable | None" = None,  # type: ignore
+    on_register: Callable[[str, StdioServerParameters], Awaitable[None]] | None = None,
+    on_unregister: Callable[[str], Awaitable[None]] | None = None,
 ) -> list[Route]:
     """Create admin API routes for server management.
 
@@ -65,10 +67,10 @@ def create_admin_routes(
 
         if on_register and config.get("enabled", True):
             try:
-                await on_register(name, params)  # type: ignore
+                await on_register(name, params)
             except Exception as e:
                 # Rollback registration on failure
-                registry.unregister(name)  # type: ignore
+                await registry.unregister(name)
                 logger.exception("Failed to start server '%s'", name)
                 return JSONResponse(
                     {"error": f"Failed to start server: {e}"},
@@ -88,7 +90,7 @@ def create_admin_routes(
 
         if on_unregister:
             try:
-                await on_unregister(name)  # type: ignore
+                await on_unregister(name)
             except Exception:
                 logger.exception("Error during cleanup for server '%s'", name)
 
