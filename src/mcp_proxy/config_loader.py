@@ -11,6 +11,9 @@ from pathlib import Path
 
 from mcp.client.stdio import StdioServerParameters
 
+from .circuit_breaker import register_circuit_breaker
+from .retry import register_retry_config
+
 logger = logging.getLogger(__name__)
 
 
@@ -123,5 +126,13 @@ def load_named_server_configs_from_file(
             command,
             " ".join(command_args),
         )
+
+        # Load extra per-server config (circuit_breaker, retry, etc.)
+        if "circuit_breaker" in server_config:
+            register_circuit_breaker(name, server_config["circuit_breaker"])
+            logger.info("Circuit breaker configured for server '%s'", name)
+        if "retry" in server_config:
+            register_retry_config(name, server_config["retry"])
+            logger.info("Retry configured for server '%s'", name)
 
     return named_stdio_params
