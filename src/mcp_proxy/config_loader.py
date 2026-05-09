@@ -102,6 +102,21 @@ def load_named_server_configs_from_file(
             {k: os.path.expandvars(str(Path(v).expanduser())) for k, v in env.items()},
         )
 
+        max_concurrent = server_config.get("max_concurrent", DEFAULT_MAX_CONCURRENT)
+        max_wait_seconds = server_config.get("max_wait_seconds", DEFAULT_MAX_WAIT_SECONDS)
+        if not isinstance(max_concurrent, int) or max_concurrent < 1:
+            logger.warning(
+                "Named server '%s': invalid 'max_concurrent' (must be int >= 1). Using default.",
+                name,
+            )
+            max_concurrent = DEFAULT_MAX_CONCURRENT
+        if not isinstance(max_wait_seconds, (int, float)) or max_wait_seconds <= 0:
+            logger.warning(
+                "Named server '%s': invalid 'max_wait_seconds' (must be > 0). Using default.",
+                name,
+            )
+            max_wait_seconds = DEFAULT_MAX_WAIT_SECONDS
+
         named_configs[name] = ServerConfig(
             stdio_params=StdioServerParameters(
                 command=command,
@@ -109,8 +124,8 @@ def load_named_server_configs_from_file(
                 env=new_env,
                 cwd=None,
             ),
-            max_concurrent=server_config.get("max_concurrent", DEFAULT_MAX_CONCURRENT),
-            max_wait_seconds=server_config.get("max_wait_seconds", DEFAULT_MAX_WAIT_SECONDS),
+            max_concurrent=max_concurrent,
+            max_wait_seconds=float(max_wait_seconds),
         )
         logger.info(
             "Configured named server '%s' from config: %s %s",

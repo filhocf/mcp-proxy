@@ -221,12 +221,12 @@ async def run_mcp_server(
 ) -> None:
     """Run stdio client(s) and expose an MCP server with multiple possible backends."""
     # Support both old-style named_server_params and new ServerConfig
-    if named_server_configs is None:
-        named_server_configs = {}
+    # Use a local copy to avoid modifying the caller's dictionary
+    effective_configs: dict[str, ServerConfig] = (named_server_configs or {}).copy()
     if named_server_params:
         for name, params in named_server_params.items():
-            if name not in named_server_configs:
-                named_server_configs[name] = ServerConfig(stdio_params=params)
+            if name not in effective_configs:
+                effective_configs[name] = ServerConfig(stdio_params=params)
 
     all_routes: list[BaseRoute] = [
         Route("/status", endpoint=_handle_status),  # Global status endpoint
@@ -266,7 +266,7 @@ async def run_mcp_server(
 
         # Setup named servers
         failed_servers: list[str] = []
-        for name, server_config in named_server_configs.items():
+        for name, server_config in effective_configs.items():
             params = server_config.stdio_params
             try:
                 logger.info(
@@ -332,7 +332,7 @@ async def run_mcp_server(
                 ", ".join(failed_servers),
             )
 
-        if not default_server_params and not named_server_configs:
+        if not default_server_params and not effective_configs:
             logger.error("No servers configured to run.")
             return
 
@@ -388,7 +388,7 @@ async def run_mcp_server(
             sse_urls.append(f"{base_url}/sse")
 
         # Add named servers
-        sse_urls.extend([f"{base_url}/servers/{name}/sse" for name in named_server_configs])
+        sse_urls.extend([f"{base_url}/servers/{name}/sse" for name in effective_configs])
 
         # Display the SSE URLs prominently
         if sse_urls:

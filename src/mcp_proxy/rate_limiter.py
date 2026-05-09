@@ -2,6 +2,7 @@
 
 import asyncio
 import logging
+from collections.abc import Awaitable, Callable
 
 from mcp import types
 
@@ -44,9 +45,11 @@ class ServerRateLimiter:
         self._semaphore.release()
 
 
-def create_rate_limited_call_tool(  # type: ignore
-    original_handler, rate_limiter: ServerRateLimiter, server_name: str
-):
+def create_rate_limited_call_tool(
+    original_handler: Callable[[types.CallToolRequest], Awaitable[types.ServerResult]],
+    rate_limiter: ServerRateLimiter,
+    server_name: str,
+) -> Callable[[types.CallToolRequest], Awaitable[types.ServerResult]]:
     """Wrap a call_tool handler with rate limiting."""
 
     async def _rate_limited_call_tool(req: types.CallToolRequest) -> types.ServerResult:
