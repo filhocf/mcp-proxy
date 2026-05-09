@@ -1,8 +1,6 @@
 """Tests for structured JSON access logging."""
 
 import json
-from unittest.mock import patch
-
 import pytest
 
 from mcp_proxy.access_log import (
@@ -32,19 +30,14 @@ def test_log_request_writes_json(tmp_path) -> None:
     """Test that log_request writes valid JSON to the log file."""
     log_file = tmp_path / "access.jsonl"
 
-    with patch("mcp_proxy.access_log.DEFAULT_LOG_PATH", str(log_file)):
-        import mcp_proxy.access_log as mod
-
-        mod._access_logger = None  # Force re-creation
-        # Manually create logger with test path
-        get_access_logger(str(log_file))
-        log_request(
-            server="test-server",
-            tool="my_tool",
-            latency_ms=42.5,
-            status="ok",
-            client_ip="127.0.0.1",
-        )
+    get_access_logger(str(log_file))
+    log_request(
+        server="test-server",
+        tool="my_tool",
+        latency_ms=42.5,
+        status="ok",
+        client_ip="127.0.0.1",
+    )
 
     content = log_file.read_text().strip()
     entry = json.loads(content)
