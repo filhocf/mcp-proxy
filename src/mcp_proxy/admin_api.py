@@ -63,7 +63,7 @@ def create_admin_routes(
         except ValueError as e:
             return JSONResponse({"error": str(e)}, status_code=409)
 
-        if on_register:
+        if on_register and config.get("enabled", True):
             try:
                 await on_register(name, params)  # type: ignore
             except Exception as e:
@@ -81,16 +81,21 @@ def create_admin_routes(
         if err := _check_admin_auth(request, api_key):
             return err
         name = request.path_params["name"]
-        try:
-            await registry.unregister(name)
-        except KeyError as e:
-            return JSONResponse({"error": str(e)}, status_code=404)
+
+        # Check existence before cleanup
+        if name not in registry.servers:
+            return JSONResponse({"error": f"Server '{name}' not found"}, status_code=404)
 
         if on_unregister:
             try:
                 await on_unregister(name)  # type: ignore
             except Exception:
                 logger.exception("Error during cleanup for server '%s'", name)
+
+        try:
+            await registry.unregister(name)
+        except KeyError as e:
+            return JSONResponse({"error": str(e)}, status_code=404)
 
         return JSONResponse({"status": "unregistered", "name": name})
 

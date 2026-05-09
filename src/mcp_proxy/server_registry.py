@@ -3,6 +3,7 @@
 import asyncio
 import json
 import logging
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -17,6 +18,7 @@ class ServerRegistry:
     def __init__(self, config_path: str | Path | None = None) -> None:
         self._servers: dict[str, dict[str, Any]] = {}
         self._config_path = Path(config_path) if config_path else None
+        self._lock = asyncio.Lock()
 
     @property
     def servers(self) -> dict[str, dict[str, Any]]:
@@ -32,7 +34,8 @@ class ServerRegistry:
             raise ValueError(msg)
 
         self._servers[name] = config
-        await asyncio.to_thread(self._persist)
+        async with self._lock:
+            await asyncio.to_thread(self._persist)
         logger.info("Registered server '%s': %s", name, config.get("command"))
         return self._to_stdio_params(name, config)
 
@@ -42,7 +45,8 @@ class ServerRegistry:
             msg = f"Server '{name}' not found"
             raise KeyError(msg)
         del self._servers[name]
-        await asyncio.to_thread(self._persist)
+        async with self._lock:
+            await asyncio.to_thread(self._persist)
         logger.info("Unregistered server '%s'", name)
 
     def list_servers(self) -> list[dict[str, Any]]:
@@ -58,23 +62,44 @@ class ServerRegistry:
         )
 
     def _persist(self) -> None:
-        """Persist current state to config file."""
+        """Persist current state to config file (atomic write, preserves disabled servers)."""
         if not self._config_path:
             return
         try:
-            # Load existing config or create new
+            # Load existing config to preserve disabled servers
             if self._config_path.exists():
                 with self._config_path.open() as f:
                     data = json.load(f)
             else:
                 data = {}
 
-            data["mcpServers"] = {
-                name: {k: v for k, v in config.items() if k != "name"}
-                for name, config in self._servers.items()
-            }
-            with self._config_path.open("w") as f:
-                json.dump(data, f, indent=2)
+            # Merge: keep disabled servers from existing config
+            existing_servers = data.get("mcpServers", {})
+            merged: dict[str, Any] = {}
+            for name, config in existing_servers.items():
+                if not config.get("enabled", True):
+                    merged[name] = config  # Preserve disabled servers
+            # Add/update active servers from registry
+            for name, config in self._servers.items():
+                merged[name] = {k: v for k, v in config.items() if k != "name"}
+
+            data["mcpServers"] = merged
+
+            # Atomic write: write to temp file then rename
+            tmp_fd = tempfile.NamedTemporaryFile(
+                mode="w",
+                dir=self._config_path.parent,
+                suffix=".tmp",
+                delete=False,
+            )
+            try:
+                json.dump(data, tmp_fd, indent=2)
+                tmp_fd.close()
+                Path(tmp_fd.name).replace(self._config_path)
+            except Exception:
+                Path(tmp_fd.name).unlink(missing_ok=True)
+                raise
+
             logger.debug("Persisted config to %s", self._config_path)
         except Exception:
             logger.exception("Failed to persist config to %s", self._config_path)
