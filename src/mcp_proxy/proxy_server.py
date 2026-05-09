@@ -219,7 +219,7 @@ async def create_proxy_server(
                     result = result.model_copy(update={"content": new_content})
                 return types.ServerResult(result)
             except Exception as e:  # noqa: BLE001
-                _elapsed = (time.perf_counter() - _t0) * 1000 if "_t0" in dir() else 0
+                _elapsed = (time.perf_counter() - _t0) * 1000 if "_t0" in locals() else 0
                 record_metric(app.name, _elapsed, True)
                 return types.ServerResult(
                     types.CallToolResult(
