@@ -44,37 +44,43 @@ class ConfigReloader:
         async with self._reload_lock:
             try:
                 new_config = await self.load_current()
+                if not isinstance(new_config, dict):
+                    return {"error": "Config file must contain a JSON object"}
             except (FileNotFoundError, json.JSONDecodeError) as e:
                 logger.exception("Failed to reload config: %s", e)
                 return {"error": str(e)}
 
-        new_servers = new_config.get("mcpServers", {})
-        old_servers = self._last_config.get("mcpServers", {})
+            new_servers = new_config.get("mcpServers", {})
+            old_servers = self._last_config.get("mcpServers", {})
 
-        added = set(new_servers.keys()) - set(old_servers.keys())
-        removed = set(old_servers.keys()) - set(new_servers.keys())
-        updated = {
-            name
-            for name in set(new_servers.keys()) & set(old_servers.keys())
-            if new_servers[name] != old_servers[name]
-        }
-
-        await self._on_reload(
-            {
-                "added": {name: new_servers[name] for name in added},
-                "removed": list(removed),
-                "updated": {name: new_servers[name] for name in updated},
-                "full_config": new_config,
+            added = set(new_servers.keys()) - set(old_servers.keys())
+            removed = set(old_servers.keys()) - set(new_servers.keys())
+            updated = {
+                name
+                for name in set(new_servers.keys()) & set(old_servers.keys())
+                if new_servers[name] != old_servers[name]
             }
-        )
 
-        self._last_config = new_config
-        return {
-            "status": "reloaded",
-            "added": list(added),
-            "removed": list(removed),
-            "updated": list(updated),
-        }
+            try:
+                await self._on_reload(
+                    {
+                        "added": {name: new_servers[name] for name in added},
+                        "removed": list(removed),
+                        "updated": {name: new_servers[name] for name in updated},
+                        "full_config": new_config,
+                    }
+                )
+            except Exception as e:
+                logger.exception("Error in reload callback: %s", e)
+                return {"error": f"Reload callback failed: {e}"}
+
+            self._last_config = new_config
+            return {
+                "status": "reloaded",
+                "added": list(added),
+                "removed": list(removed),
+                "updated": list(updated),
+            }
 
     def install_signal_handler(self, loop: asyncio.AbstractEventLoop) -> None:
         """Install SIGHUP handler (Unix only)."""
@@ -84,7 +90,7 @@ class ConfigReloader:
 
         def _handler() -> None:
             logger.info("Received SIGHUP, reloading config...")
-            asyncio.ensure_future(self.reload(), loop=loop)
+            loop.create_task(self.reload())
 
         loop.add_signal_handler(signal.SIGHUP, _handler)
         logger.info("SIGHUP handler installed for config reload")
