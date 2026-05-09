@@ -75,11 +75,15 @@ class ServerRegistry:
 
             # Merge: keep disabled servers from existing config
             existing_servers = data.get("mcpServers", {})
-            merged: dict[str, Any] = {
-                name: config
-                for name, config in existing_servers.items()
-                if isinstance(config, dict) and not config.get("enabled", True)
-            } if isinstance(existing_servers, dict) else {}
+            merged: dict[str, Any] = (
+                {
+                    name: config
+                    for name, config in existing_servers.items()
+                    if isinstance(config, dict) and not config.get("enabled", True)
+                }
+                if isinstance(existing_servers, dict)
+                else {}
+            )
             # Add/update active servers from registry
             for name, config in self._servers.items():
                 merged[name] = {k: v for k, v in config.items() if k != "name"}
