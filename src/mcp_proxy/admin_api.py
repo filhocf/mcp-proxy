@@ -69,9 +69,12 @@ def create_admin_routes(
             try:
                 await on_register(name, params)
             except Exception as e:
-                # Rollback registration on failure
-                await registry.unregister(name)
                 logger.exception("Failed to start server '%s'", name)
+                # Rollback registration on failure
+                try:
+                    await registry.unregister(name)
+                except Exception:  # noqa: BLE001
+                    logger.exception("Rollback failed for server '%s'", name)
                 return JSONResponse(
                     {"error": f"Failed to start server: {e}"},
                     status_code=500,

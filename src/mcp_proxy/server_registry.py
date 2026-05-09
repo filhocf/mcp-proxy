@@ -78,27 +78,29 @@ class ServerRegistry:
             merged: dict[str, Any] = {
                 name: config
                 for name, config in existing_servers.items()
-                if not config.get("enabled", True)
-            }
+                if isinstance(config, dict) and not config.get("enabled", True)
+            } if isinstance(existing_servers, dict) else {}
             # Add/update active servers from registry
             for name, config in self._servers.items():
                 merged[name] = {k: v for k, v in config.items() if k != "name"}
 
             data["mcpServers"] = merged
 
-            # Atomic write: write to temp file then rename
-            tmp_fd = tempfile.NamedTemporaryFile(  # noqa: SIM115
-                mode="w",
-                dir=self._config_path.parent,
-                suffix=".tmp",
-                delete=False,
-            )
+            # Atomic write: write to temp file, close, then rename
+            tmp_path = None
             try:
-                json.dump(data, tmp_fd, indent=2)
-                tmp_fd.close()
-                Path(tmp_fd.name).replace(self._config_path)
+                with tempfile.NamedTemporaryFile(
+                    mode="w",
+                    dir=self._config_path.parent,
+                    suffix=".tmp",
+                    delete=False,
+                ) as tmp_fd:
+                    tmp_path = Path(tmp_fd.name)
+                    json.dump(data, tmp_fd, indent=2)
+                tmp_path.replace(self._config_path)
             except Exception:
-                Path(tmp_fd.name).unlink(missing_ok=True)
+                if tmp_path:
+                    tmp_path.unlink(missing_ok=True)
                 raise
 
             logger.debug("Persisted config to %s", self._config_path)
