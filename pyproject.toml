@@ -1,6 +1,6 @@
 [project]
 name = "mcp-proxy-plus"
-description = "Enhanced MCP proxy with health endpoint, graceful failure handling, env var expansion, API key auth, and rmcp 0.17 compatibility. Fork of sparfenyuk/mcp-proxy."
+description = "Production-grade MCP gateway with rate limiting, circuit breaker, RBAC, hot-reload, dashboard, and 14 enterprise features."
 authors = [
     { name = "Claudio Ferreira Filho", email = "filhocf@gmail.com" },
     { name = "Sergey Parfenyuk", email = "sergey.parfenyuk@gmail.com" },
@@ -8,7 +8,7 @@ authors = [
 license = { file = "LICENSE" }
 readme = "README.md"
 classifiers = [
-    "Development Status :: 4 - Beta",
+    "Development Status :: 5 - Production/Stable",
     "Environment :: Console",
     "Intended Audience :: Developers",
     "Intended Audience :: Information Technology",
