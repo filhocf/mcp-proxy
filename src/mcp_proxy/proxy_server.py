@@ -11,6 +11,8 @@ import typing as t
 from mcp import server, types
 from mcp.client.session import ClientSession
 
+from .reconnect_manager import ReconnectManager
+
 logger = logging.getLogger(__name__)
 
 
@@ -50,6 +52,8 @@ def create_roots_forwarding_callback(
 
 async def create_proxy_server(
     remote_app: ClientSession,
+    server_name: str | None = None,
+    reconnect_mgr: ReconnectManager | None = None,
 ) -> server.Server[object]:
     """Create a server instance from a remote app.
 
@@ -80,7 +84,13 @@ async def create_proxy_server(
         logger.debug("Capabilities: adding Prompts...")
 
         async def _list_prompts(_: t.Any) -> types.ServerResult:  # noqa: ANN401
-            result = await remote_app.list_prompts()
+            async def _do_list(session):
+                return await session.list_prompts()
+
+            if reconnect_mgr and server_name:
+                result = await reconnect_mgr.call_with_reconnect(server_name, _do_list)
+            else:
+                result = await remote_app.list_prompts()
             return types.ServerResult(result)
 
         app.request_handlers[types.ListPromptsRequest] = _list_prompts
@@ -144,7 +154,13 @@ async def create_proxy_server(
         logger.debug("Capabilities: adding Tools...")
 
         async def _list_tools(_: t.Any) -> types.ServerResult:  # noqa: ANN401
-            tools = await remote_app.list_tools()
+            async def _do_list(session):
+                return await session.list_tools()
+
+            if reconnect_mgr and server_name:
+                tools = await reconnect_mgr.call_with_reconnect(server_name, _do_list)
+            else:
+                tools = await remote_app.list_tools()
             return types.ServerResult(tools)
 
         app.request_handlers[types.ListToolsRequest] = _list_tools
@@ -189,12 +205,20 @@ async def create_proxy_server(
                             flush=True,
                         )
 
-                result = await remote_app.call_tool(
-                    req.params.name,
-                    (req.params.arguments or {}),
-                    meta=meta_dict,
-                    progress_callback=progress_forwarder,
-                )
+                async def _do_call(session):
+                    return await session.call_tool(
+                        req.params.name,
+                        (req.params.arguments or {}),
+                        meta=meta_dict,
+                        progress_callback=progress_forwarder,
+                    )
+
+                # Use reconnect manager if available, otherwise direct call
+                if reconnect_mgr and server_name:
+                    result = await reconnect_mgr.call_with_reconnect(server_name, _do_call)
+                else:
+                    result = await _do_call(remote_app)
+
                 # When the server returns structuredContent but no meaningful text,
                 # add a JSON text fallback so stdio clients can display the result.
                 content_items = result.content or []
