@@ -11,13 +11,12 @@ from mcp.client.stdio import StdioServerParameters, stdio_client
 
 logger = logging.getLogger(__name__)
 
-# Errors that indicate a dead process/pipe
+# Errors that indicate a dead process/pipe (specific, not broad OSError)
 RECONNECTABLE_ERRORS = (
     ClosedResourceError,
     EndOfStream,
     BrokenPipeError,
     ConnectionResetError,
-    OSError,
 )
 
 
@@ -28,22 +27,42 @@ class ManagedSession:
     name: str
     params: StdioServerParameters
     session: ClientSession | None = None
+    _cm: Any = field(default=None, repr=False)
+    _session_cm: Any = field(default=None, repr=False)
     _lock: asyncio.Lock = field(default_factory=asyncio.Lock, repr=False)
     reconnect_count: int = 0
 
     async def reconnect(self) -> ClientSession:
-        """Spawn a fresh process and create new session."""
+        """Cleanup dead session, spawn fresh process, create new session."""
         async with self._lock:
             logger.warning("Reconnecting server '%s' (attempt #%d)...", self.name, self.reconnect_count + 1)
+            # Cleanup old resources
+            await self._cleanup()
             # Spawn new process
-            cm = stdio_client(self.params)
-            streams = await cm.__aenter__()
-            session_cm = ClientSession(*streams)
-            self.session = await session_cm.__aenter__()
+            self._cm = stdio_client(self.params)
+            streams = await self._cm.__aenter__()
+            self._session_cm = ClientSession(*streams)
+            self.session = await self._session_cm.__aenter__()
             await self.session.initialize()
             self.reconnect_count += 1
-            logger.info("Server '%s' reconnected successfully (PID active).", self.name)
+            logger.info("Server '%s' reconnected successfully.", self.name)
             return self.session
+
+    async def _cleanup(self) -> None:
+        """Cleanup old session and context manager resources."""
+        if self._session_cm is not None:
+            try:
+                await self._session_cm.__aexit__(None, None, None)
+            except Exception:
+                pass
+            self._session_cm = None
+        if self._cm is not None:
+            try:
+                await self._cm.__aexit__(None, None, None)
+            except Exception:
+                pass
+            self._cm = None
+        self.session = None
 
 
 class ReconnectManager:
@@ -56,6 +75,15 @@ class ReconnectManager:
         """Register a server's session and params for future reconnect."""
         managed = ManagedSession(name=name, params=params, session=session)
         self._sessions[name] = managed
+
+    def get_session(self, name: str) -> ClientSession:
+        """Get current session for a server."""
+        managed = self._sessions.get(name)
+        if managed is None:
+            raise KeyError(f"Server '{name}' not registered for reconnect")
+        if managed.session is None:
+            raise RuntimeError(f"Server '{name}' not connected")
+        return managed.session
 
     async def call_with_reconnect(self, name: str, coro_factory):
         """Execute a coroutine with automatic reconnect on connection failure.
@@ -91,6 +119,6 @@ class ReconnectManager:
 _manager = ReconnectManager()
 
 
-def get_reconnect_manager() -> ReconnectManager:
+def get_reconnect_manager() -> "ReconnectManager":
     """Get the global reconnect manager."""
     return _manager
