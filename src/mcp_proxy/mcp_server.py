@@ -122,6 +122,17 @@ HTTP_METHODS = ["DELETE", "GET", "HEAD", "OPTIONS", "PATCH", "POST", "PUT", "TRA
 
 async def _handle_status(_: Request) -> Response:
     """Global health check and service usage monitoring endpoint."""
+    # Enrich status with reconnect counts from registry
+    try:
+        from .reconnect_manager import get_reconnect_manager  # noqa: PLC0415
+
+        reg_status = get_reconnect_manager().status()
+        for name, info in reg_status.items():
+            if name in _global_status["server_instances"]:
+                _global_status["server_instances"][name]["reconnect_count"] = info["reconnect_count"]
+    except Exception:
+        pass
+
     healthy_count = sum(
         1
         for s in _global_status["server_instances"].values()
@@ -265,6 +276,9 @@ async def run_mcp_server(
             }
 
         # Setup named servers
+        from .reconnect_manager import get_reconnect_manager  # noqa: PLC0415
+
+        reconnect_mgr = get_reconnect_manager()
         failed_servers: list[str] = []
         for name, server_config in effective_configs.items():
             params = server_config.stdio_params
@@ -277,7 +291,13 @@ async def run_mcp_server(
                 )
                 stdio_streams_named = await stack.enter_async_context(stdio_client(params))
                 session_named = await stack.enter_async_context(ClientSession(*stdio_streams_named))
-                proxy_named = await create_proxy_server(session_named)
+                # Register for reconnect capability
+                reconnect_mgr.register(name, params, session_named)
+                proxy_named = await create_proxy_server(
+                    session_named,
+                    server_name=name,
+                    reconnect_mgr=reconnect_mgr,
+                )
 
                 # Apply rate limiting if configured
                 if mcp_types.CallToolRequest in proxy_named.request_handlers:

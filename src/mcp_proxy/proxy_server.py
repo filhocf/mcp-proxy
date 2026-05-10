@@ -50,6 +50,8 @@ def create_roots_forwarding_callback(
 
 async def create_proxy_server(
     remote_app: ClientSession,
+    server_name: str | None = None,
+    reconnect_mgr=None,
 ) -> server.Server[object]:
     """Create a server instance from a remote app.
 
@@ -189,12 +191,20 @@ async def create_proxy_server(
                             flush=True,
                         )
 
-                result = await remote_app.call_tool(
-                    req.params.name,
-                    (req.params.arguments or {}),
-                    meta=meta_dict,
-                    progress_callback=progress_forwarder,
-                )
+                async def _do_call(session):
+                    return await session.call_tool(
+                        req.params.name,
+                        (req.params.arguments or {}),
+                        meta=meta_dict,
+                        progress_callback=progress_forwarder,
+                    )
+
+                # Use reconnect manager if available, otherwise direct call
+                if reconnect_mgr and server_name:
+                    result = await reconnect_mgr.call_with_reconnect(server_name, _do_call)
+                else:
+                    result = await _do_call(remote_app)
+
                 # When the server returns structuredContent but no meaningful text,
                 # add a JSON text fallback so stdio clients can display the result.
                 content_items = result.content or []
