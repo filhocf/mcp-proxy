@@ -30,12 +30,12 @@ class ConfigReloader:
         self._last_config: dict[str, Any] = {}
         self._reload_lock = asyncio.Lock()
 
-    def _load_current_sync(self) -> dict[str, Any]:
+    def _load_current_sync(self) -> Any:
         """Load and return current config from file (blocking I/O)."""
         with self._config_path.open() as f:
-            return json.load(f)  # type: ignore
+            return json.load(f)
 
-    async def load_current(self) -> dict[str, Any]:
+    async def load_current(self) -> Any:
         """Load and return current config from file (non-blocking)."""
         return await asyncio.to_thread(self._load_current_sync)
 

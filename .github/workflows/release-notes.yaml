@@ -1,0 +1,72 @@
+name: Release Notes
+
+on:
+  release:
+    types: [created]
+
+permissions:
+  contents: write
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Generate changelog from commits
+        id: changelog
+        run: |
+          # Get previous tag
+          PREV_TAG=$(git tag --sort=-creatordate | sed -n '2p')
+          CURRENT_TAG=${GITHUB_REF_NAME}
+
+          if [ -z "$PREV_TAG" ]; then
+            RANGE="$CURRENT_TAG"
+          else
+            RANGE="${PREV_TAG}..${CURRENT_TAG}"
+          fi
+
+          echo "## Changes" > notes.md
+          echo "" >> notes.md
+
+          # Features
+          FEATS=$(git log "$RANGE" --pretty=format:"- %s" --grep="^feat" 2>/dev/null)
+          if [ -n "$FEATS" ]; then
+            echo "### ✨ Features" >> notes.md
+            echo "$FEATS" >> notes.md
+            echo "" >> notes.md
+          fi
+
+          # Fixes
+          FIXES=$(git log "$RANGE" --pretty=format:"- %s" --grep="^fix" 2>/dev/null)
+          if [ -n "$FIXES" ]; then
+            echo "### 🐛 Fixes" >> notes.md
+            echo "$FIXES" >> notes.md
+            echo "" >> notes.md
+          fi
+
+          # Docs
+          DOCS=$(git log "$RANGE" --pretty=format:"- %s" --grep="^docs" 2>/dev/null)
+          if [ -n "$DOCS" ]; then
+            echo "### 📚 Documentation" >> notes.md
+            echo "$DOCS" >> notes.md
+            echo "" >> notes.md
+          fi
+
+          # Chores
+          CHORES=$(git log "$RANGE" --pretty=format:"- %s" --grep="^chore" 2>/dev/null)
+          if [ -n "$CHORES" ]; then
+            echo "### 🔧 Maintenance" >> notes.md
+            echo "$CHORES" >> notes.md
+            echo "" >> notes.md
+          fi
+
+          echo "---" >> notes.md
+          echo "**Full Changelog**: https://github.com/${{ github.repository }}/compare/${PREV_TAG}...${CURRENT_TAG}" >> notes.md
+
+      - name: Update release body
+        run: gh release edit "$GITHUB_REF_NAME" --notes-file notes.md
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -72,7 +72,7 @@ def create_rate_limited_call_tool(
                 ),
             )
         try:
-            return await original_handler(req)  # type: ignore
+            return await original_handler(req)
         finally:
             rate_limiter.release()
 

@@ -20,9 +20,9 @@ class RetryConfig:
 
 def compute_delay(attempt: int, config: RetryConfig) -> float:
     """Compute delay with exponential backoff + jitter."""
-    delay = min(config.base_delay * (2**attempt), config.max_delay)
-    jitter = random.uniform(0, 0.5 * config.base_delay)  # noqa: S311
-    return delay + jitter  # type: ignore
+    delay: float = min(config.base_delay * (2**attempt), config.max_delay)
+    jitter: float = random.uniform(0, 0.5 * config.base_delay)  # noqa: S311
+    return delay + jitter
 
 
 def is_retryable_error(exc: Exception) -> bool:

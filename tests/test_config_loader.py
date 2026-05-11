@@ -9,7 +9,6 @@ from pathlib import Path
 from unittest.mock import Mock, patch
 
 import pytest
-from mcp.client.stdio import StdioServerParameters
 
 from mcp_proxy.config_loader import ServerConfig, load_named_server_configs_from_file
 
@@ -289,7 +288,10 @@ def test_env_var_expansion_with_braces(
     loaded_params = load_named_server_configs_from_file(tmp_config_path, {})
 
     assert loaded_params["server1"].stdio_params.env is not None
-    assert loaded_params["server1"].stdio_params.env["DB_PATH"] == "/home/testuser/.local/share/db.sqlite"
+    assert (
+        loaded_params["server1"].stdio_params.env["DB_PATH"]
+        == "/home/testuser/.local/share/db.sqlite"
+    )
 
 
 def test_tilde_expansion_in_env(
