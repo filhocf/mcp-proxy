@@ -1,0 +1,47 @@
+# mcp-proxy-plus
+
+> Production-grade MCP gateway. Manages multiple MCP servers behind a single HTTP endpoint with lazy reconnect, health monitoring, and API key auth.
+
+## Overview
+
+mcp-proxy-plus is a reverse proxy that aggregates multiple MCP (Model Context Protocol) servers into one Streamable HTTP endpoint. Clients connect to a single port and access all configured servers via path-based routing.
+
+## Key Features
+
+- Single endpoint: all MCP servers accessible via `/servers/{name}/mcp`
+- Lazy reconnect (v1.1.0): crashed servers auto-respawn on next request
+- Health monitoring: `/health` and `/status` endpoints
+- API key authentication: Bearer token middleware
+- Stdio/SSE/Streamable HTTP transport support
+- JSON config: declarative server definitions with env vars and args
+
+## Architecture
+
+```
+Client (Kiro CLI) → :3100/servers/{name}/mcp → mcp-proxy → spawn/connect → MCP Server
+```
+
+## Configuration
+
+`mcp-proxy-config.json`:
+```json
+{
+  "mcpServers": {
+    "memory-service": {
+      "command": "uv", "args": ["run", "memory-server"],
+      "env": {"MCP_MEMORY_DIR": "/path/to/db"}
+    }
+  }
+}
+```
+
+## Installation
+
+```bash
+uv tool install --from git+https://github.com/filhocf/mcp-proxy mcp-proxy-plus
+```
+
+## Links
+
+- GitHub: https://github.com/filhocf/mcp-proxy
+- License: MIT
