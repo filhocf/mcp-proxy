@@ -182,6 +182,7 @@ def create_single_instance_routes(
                 read_stream,
                 write_stream,
                 mcp_server_instance.create_initialization_options(),
+                stateless=stateless_instance,
             )
         return Response()
 
