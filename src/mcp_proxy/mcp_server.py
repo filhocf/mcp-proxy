@@ -403,19 +403,28 @@ async def run_mcp_server(
         # Print out the SSE URLs for all configured servers
         base_url = f"http://{mcp_settings.bind_host}:{mcp_settings.port}"
         sse_urls = []
+        mcp_urls = []
 
         # Add default server if configured
         if default_server_params:
             sse_urls.append(f"{base_url}/sse")
+            mcp_urls.append(f"{base_url}/mcp")
 
         # Add named servers
         sse_urls.extend([f"{base_url}/servers/{name}/sse" for name in effective_configs])
+        mcp_urls.extend([f"{base_url}/servers/{name}/mcp" for name in effective_configs])
 
         # Display the SSE URLs prominently
         if sse_urls:
             # Using print directly for user visibility, with noqa to ignore linter warnings
             logger.info("Serving MCP Servers via SSE:")
             for url in sse_urls:
+                logger.info("  - %s", url)
+
+        # Display StreamableHTTP endpoints
+        if mcp_urls:
+            logger.info("Serving MCP Servers via StreamableHTTP:")
+            for url in mcp_urls:
                 logger.info("  - %s", url)
 
         logger.debug(

@@ -76,8 +76,10 @@ async def create_proxy_server(
     response = await remote_app.initialize()
     capabilities = response.capabilities
 
-    # Update the server name now that we know it from the downstream server
+    # Update the server metadata from the downstream server
     app.name = response.serverInfo.name
+    if response.instructions:
+        app.instructions = response.instructions
     logger.debug("Configuring proxied MCP server...")
 
     if capabilities.prompts:
